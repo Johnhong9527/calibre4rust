@@ -16,15 +16,19 @@ calibre 的 **GPUI 桌面前端**。
 
 ## 当前进度
 
-Phase A/B/C 实施中(设计文档与实施计划见 `docs/superpowers/`):
+Phase A/B/C **已完成**(验收记录见 `docs/superpowers/specs/2026-10-21-phase-abc-acceptance.md`):
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| A | 依赖打通(GPUI + caliberate git 依赖)、GPUI 启动、service 接入 | 进行中 |
-| B | 主窗口骨架(工具栏 / 菜单栏 / 搜索栏 / 五面板 / 分隔条) | 未开始 |
-| C | 书列表表格视图(分块加载 + 排序 + 多选) | 未开始 |
+| A | 依赖打通(GPUI + caliberate git 依赖)、GPUI 启动、service 接入 | ✅ |
+| B | 主窗口骨架(工具栏 / 菜单栏 / 搜索栏 / 五面板 / 分隔条) | ✅ |
+| C | 书列表表格视图(分块加载 + 排序 + 多选) | ✅ |
+
+已验证:caliberate 的 `calibredb` 写入的书,本前端能读出并渲染(`calibre4rust list`)。
+未验证:像素渲染与中文显示(本机无录屏权限,需人工补验)。
 
 后续:分类浏览器 + 搜索栏、书籍详情 + 封面网格、元数据编辑、工具栏动作 + 首选项、阅读器。
+阅读器阻塞于 caliberate 侧的 `crates/document` 与 `crates/formats`(见 `docs/caliberate-gaps.md`)。
 
 ---
 

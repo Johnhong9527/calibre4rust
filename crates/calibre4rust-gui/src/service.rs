@@ -1,11 +1,15 @@
 use anyhow::Context;
 use caliberate_db::database::Database;
 use caliberate_library::catalog::{LibraryBook, LibraryCatalog};
-use caliberate_library::query::{
-    LibraryFacetKind, LibraryFacetValue, LibraryQuery, LibrarySortField,
-};
 use caliberate_library::summary::LibrarySummaryPage;
 use std::path::Path;
+
+// 纯数据类型在这里转发一次,UI 模块从 `crate::service` 取,不必直接依赖 caliberate。
+// 架构边界关心的是**查询路径**(catalog / database / SQL),不是数据形状。
+pub use caliberate_library::query::{
+    LibraryFacetKind, LibraryFacetValue, LibraryQuery, LibrarySortField,
+};
+pub use caliberate_library::summary::{LibraryBookSummary, LibrarySeriesSummary};
 
 pub const SUMMARY_CHUNK_SIZE: usize = 2000;
 

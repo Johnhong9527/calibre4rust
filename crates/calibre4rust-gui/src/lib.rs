@@ -1,6 +1,8 @@
 pub mod actions;
 pub mod app;
 pub mod assets;
+pub mod book_list;
+pub mod cli;
 pub mod service;
 pub mod theme_provider;
 pub mod window;

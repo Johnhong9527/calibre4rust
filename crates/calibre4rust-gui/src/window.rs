@@ -3,6 +3,7 @@ use gpui::{App, Entity, Menu, MenuItem, MouseButton};
 use ui::prelude::*;
 
 use crate::actions;
+use crate::book_list::BookList;
 use crate::service::LibraryService;
 
 /// calibre 的 macOS 默认工具栏动作。
@@ -67,6 +68,7 @@ struct ResizeDrag {
 
 pub struct MainWindow {
     service: Option<Entity<LibraryService>>,
+    book_list: Entity<BookList>,
     layout: PanelLayout,
     tag_browser_visible: bool,
     book_details_visible: bool,
@@ -97,8 +99,11 @@ impl MainWindow {
             None => "书库未加载".to_string(),
         };
 
+        let book_list = BookList::new(service.clone(), cx);
+
         let window = cx.new(|_cx| Self {
             service,
+            book_list,
             layout: PanelLayout::Wide,
             tag_browser_visible: true,
             book_details_visible: true,
@@ -298,7 +303,7 @@ impl MainWindow {
     }
 
     fn render_book_list(&self) -> impl IntoElement {
-        div().flex_1().h_full().p_2().child("书列表")
+        self.book_list.clone()
     }
 
     fn render_book_details(&self, width: f32) -> impl IntoElement {

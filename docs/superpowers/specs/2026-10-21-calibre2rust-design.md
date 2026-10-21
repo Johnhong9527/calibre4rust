@@ -6,6 +6,8 @@
 > UI 框架来源:`../zed`(zed 仓库,`92447a17cc008225c73619f1c3f0cdefc8ababf3`,branch `main`)
 
 > **评审记录**:本文档经一轮"实现者视角"独立评审,评审方实际编译并运行了 GPUI 栈,发现并修正了 5 处事实性错误(搜索运算符 `=.` 顺序、默认排序方向、macOS 工具栏默认项、格式插件目录位置、crate 循环依赖)与 1 处环境级阻塞(缺 Metal Toolchain)。所有修正已合入本文档,并在对应章节标注了上游 file:line 依据。
+>
+> **用户拍板(第 2 轮)**:**EPUB2 与 EPUB3 为优先支持格式**;**许可证 = GPL-3.0-or-later**;**PDF 暂不做,留占位符**;**图标使用 calibre 原版**。均已写入 §8 决策 26–29。
 
 ---
 
@@ -32,11 +34,12 @@
 | G3 | 主界面:标签浏览器 + 书列表 + 书籍详情 + 搜索栏 | 面板结构、交互、快捷键与 calibre 一致 |
 | G4 | 导入:单文件 / 多选 / 文件夹 / 从既有 calibre 书库 | 能把存量书库完整搬进来,元数据不丢 |
 | G5 | 元数据编辑:单本 + 批量 | 字段覆盖 calibre 的基本字段 + 自定义列 |
-| G6 | 格式层:元数据模型 + OEB 中间表示 + 主流格式读写 | EPUB/TXT/HTML/FB2/MOBI/AZW3/RTF/ODT/PDF-meta/Comic |
-| G7 | 转换管线 + `ebook-convert` 等价 CLI | 覆盖 calibre 的 pipeline 选项 |
-| G8 | 阅读器:纯 Rust 文本渲染 + 目录 + 注释/书签 | EPUB/FB2/TXT 可读,带章节导航与高亮 |
-| G9 | 内容服务器 + OPDS + `calibredb` 等价 CLI | 浏览器可访问、可检索、可下载 |
-| G10 | 中英双语界面可切换 | 设置中切换,立即生效 |
+| G6 | **EPUB2 / EPUB3 优先支持**(P0) | 两版都能读元数据、写元数据、转换、渲染;元数据与封面往返无损 |
+| G7 | 格式层:其余格式的元数据模型 + OEB 中间表示 + 主流格式读写 | TXT/HTML/HTMLZ/FB2/MOBI/AZW3/RTF/ODT(PDF 暂留占位符) |
+| G8 | 转换管线 + `ebook-convert` 等价 CLI | 覆盖 calibre 的 pipeline 选项 |
+| G9 | 阅读器:纯 Rust 文本渲染 + 目录 + 注释/书签 | EPUB2/EPUB3/FB2/TXT 可读,带章节导航与高亮 |
+| G10 | 内容服务器 + OPDS + `calibredb` 等价 CLI | 浏览器可访问、可检索、可下载 |
+| G11 | 中英双语界面可切换 | 设置中切换,立即生效 |
 
 ### 2.2 非目标(本项目不做)
 
@@ -44,6 +47,7 @@
 - DRM 书籍:AZW/KFX/PDF-DRM/LIT-DRM 一律报 `DrmError`。
 - ZEBRA 格式 —— calibre 上游本身就不支持。
 - 跨平台 GUI:一期只做 macOS。数据层与格式层保持跨平台(不引入平台专属 API),为后续 Linux/Windows 留路。
+- **PDF 转换**:暂不做,格式注册表里只留占位插件(§8 决策 27)。
 - 不追求与 calibre 的 `metadata.db` 二进制兼容。
 
 ### 2.3 反目标(做成了也算失败)
@@ -527,6 +531,34 @@ pub trait MetadataWriterPlugin: Send + Sync {
 }
 ```
 
+**EPUB 是优先支持格式(用户指定:「EPUB2 和 EPUB3 为优先支持格式」)**
+
+EPUB2 与 EPUB3 是**第一批就要做到位**的格式,排在所有其他格式之前。EPUB 的读写、元数据、封面、目录、阅读器支持,必须完整且正确。
+
+**两个版本的技术差异**(必须分别正确处理,不能只做其中之一):
+
+| 维度 | EPUB 2(OPF 2.0) | EPUB 3(OPF 3.0) |
+|---|---|---|
+| package | `version="2.0"` | `version="3.0"` |
+| 目录 | NCX(`toc.ncx` + `spine toc="ncx"`)+ `guide` | 导航文档 `nav.xhtml`(`epub:type="toc"`),manifest 项 `properties="nav"`;landmarks 导航 |
+| 必需元数据 | 无额外要求 | **必须**有 `<meta property="dcterms:modified">`(UTC 时间戳) |
+| 封面 | `<meta name="cover" content="<manifest-id>"/>` | manifest 项 `properties="cover-image"` |
+| manifest `properties` | 不可用 | 可用 `svg` / `scripted` / `mathml` / `switch` |
+| XHTML | XHTML 1.1 | HTML5 + `epub:type` 允许 |
+
+**实现路径**:与上游一致 —— **先统一按 EPUB2 结构生成**,再用 `epub_2_to_3`(`src/calibre/ebooks/oeb/polish/upgrade.py:152`)升级:
+1. `collect_properties`(`upgrade.py:67`)—— 扫描各 manifest 项内容,自动打上 `svg` / `scripted` / `mathml` / `switch` 标签。
+2. `create_nav`(`upgrade.py:140`)—— 由 NCX 的 TOC 生成 `nav.xhtml`,并写入 landmarks;`commit_nav_toc` 负责落地。
+3. 移除 NCX(`remove_ncx=True` 为默认)。
+4. 补 `dcterms:modified`。
+
+上游的 `epub_output.py` 也是这个流程:`epub_version` 选项(choices `('2','3')`,**默认 `'2'`**,`epub_output.py:76,144-149`),值为 `'3'` 时在 `epub_output.py:300` 调用 `upgrade_to_epub3`(`epub_output.py:355-374`)。
+**默认输出 EPUB2**(上游注释:*"EPUB 2 is the most widely compatible"*),EPUB3 需显式指定。
+
+**读取端**:两个版本都要能读。EPUB3 的 `nav.xhtml` 与 EPUB2 的 NCX 归一到同一个内部 TOC 结构;`dcterms:modified` 与 `dc:date` 归一到同一个 `pubdate`/`timestamp`。
+
+**元数据边车**:本项目自己的 `metadata.json` 与 EPUB 版本无关;写回 EPUB 时按目标版本降级/升级(§D6 的 `MetadataWriterPlugin` 负责)。
+
 **格式支持矩阵**(对齐上游 `src/calibre/ebooks/conversion/plugins/` 的实际插件集合):
 
 > **上游插件目录已重构**:calibre 9.x 把所有转换插件集中到 `src/calibre/ebooks/conversion/plugins/{format}_{input,output}.py`。`ebooks/epub/`、`ebooks/mobi/`、`ebooks/fb2/` 等目录下**已无插件代码**(只剩 `cfi/`、`pages.py` 等辅助模块)。查上游实现时不要去 `ebooks/<format>/` 找插件。
@@ -535,7 +567,9 @@ pub trait MetadataWriterPlugin: Send + Sync {
 
 | 格式 | 上游插件 | 读元数据 | 写元数据 | 转换源 | 转换目标 | 阶段 |
 |---|---|---|---|---|---|---|
-| EPUB / KEPUB | `epub_input` / `epub_output` | ✅ | ✅ | ✅ | ✅ | Phase 2 |
+| **EPUB 2** | `epub_input` / `epub_output` | ✅ **P0** | ✅ **P0** | ✅ **P0** | ✅ **P0** | Phase 1(读)/ Phase 2(写) |
+| **EPUB 3** | 同上(`epub_version='3'`) | ✅ **P0** | ✅ **P0** | ✅ **P0** | ✅ **P0** | Phase 1(读)/ Phase 2(写) |
+| KEPUB | `epub_output`(变体) | ✅ | ✅ | ✅ | ✅ | Phase 2 |
 | TXT / TXTZ | `txt_input` / `txt_output` | ✅ | ❌ | ✅ | ✅ | Phase 2 |
 | HTML / XHTML | `html_input` / `html_output` | ✅ | ❌ | ✅ | ✅(产出 zip) | Phase 2 |
 | HTMLZ | `htmlz_input` / `htmlz_output` | ✅ | ✅ | ✅ | ✅ | Phase 2 |
@@ -543,7 +577,7 @@ pub trait MetadataWriterPlugin: Send + Sync {
 | MOBI(含 AZW3) | `mobi_input` / `mobi_output` | ✅ | ✅ | ✅ | ✅ | Phase 2 |
 | RTF | `rtf_input` / `rtf_output` | ✅ | ✅ | ✅ | ✅ | Phase 2 |
 | ODT | `odt_input` | ✅ | ❌ | ✅ | ❌ | Phase 2 |
-| PDF | `pdf_input` / `pdf_output` | ✅ | ✅ | ✅ | ✅(依赖外部) | Phase 3 |
+| ~~PDF~~ | `pdf_input` / `pdf_output` | 占位 | 占位 | 占位 | 占位 | **暂不做**(见 §8 决策 27) |
 | Comic(CBZ/CBR/CB7/CBC) | `comic_input` | 部分 | ❌ | ✅ | ❌ | Phase 3 |
 | LRF | `lrf_input` / `lrf_output` | ✅ | ✅ | ✅ | ✅ | Phase 3 |
 | PDB(eReader) | `pdb_input` / `pdb_output` | ✅ | 部分 | ✅ | ✅ | Phase 3 |
@@ -627,21 +661,25 @@ calibre 的模板语言(General Program Mode + 模板表达式)是复合列、`s
 
 ### D12. 美术资源与字体
 
-**决策**:自建 `AssetSource`,**不引入 zed 的 `assets` crate**。
+**决策(用户已拍板)**:**图标直接使用 calibre 原版**(`../calibre/imgsrc/*.svg`,193 个);**不引入** zed 的 `assets` crate;字体自带 **Noto Sans SC**。
 
-**理由**:
-1. `assets` 是 GPL-3.0-or-later 的 4.6 MB 资源包(1.6 MB 字体 + 1.6 MB 图标),依赖只有 `anyhow`/`gpui`/`util` —— 它并不"重",但:
-2. **它不含中文字体**。`gpui_apple` 的文本系统在 `font-kit` 特性下工作(`gpui_apple/src/gpui_apple.rs:14-20`),Zed 通过 `assets.load_fonts(cx)` 注册自己的字体。本项目要支持中文界面,必须自带 CJK 字体。
-3. Zed 的字体是拉丁字体,中文会渲染成豆腐块。
+**图标来源与落地方式**:
+- calibre 的图标源文件在 `calibre/imgsrc/`(193 个 SVG + `imgsrc/plugins/` 子目录),由 `calibre/imgsrc/generate.py` 在构建期用 `rsvg-convert` 栅格化成 PNG 打进 Qt 资源主题 —— **这一步我们不需要**。
+- **GPUI 原生支持 SVG**(`crates/gpui/src/elements/img.rs:216` 把 `svg` 列入支持的扩展名,用 `resvg`/`usvg` 渲染,`cx.svg_renderer()`)。因此**直接打包 SVG 即可**,不必栅格化。
+- **落地方式**:把 `imgsrc/*.svg` **复制进本仓库的 `assets/icons/`**(不构建期引用兄弟目录,保持仓库自包含),并在 `assets/NOTICE` 里记录来源(calibre, GPL-3.0-or-later)与原始文件列表。
+- **主题变体选择规则**:calibre 有按主题区分的图标(`close-for-dark-theme.svg` / `close-for-light-theme.svg`、`external-link-for-dark-theme.svg`、`notes-for-dark-theme.svg`,以及自动反色的 `modified-for-dark-theme.svg` / `modified-for-light-theme.svg`)。解析规则:**给定图标名 N,先找 `N-for-{当前主题}-theme.svg`,找不到则用 `N.svg`**。深色主题下,若只有 `N.svg` 而存在 `modified-for-dark-theme.svg`,用后者。
+- `calibreSymbols.spd`(Spline 符号字体)我们**不使用** —— 直接用单个 SVG,更可控。
 
-**因此**:
-- `assets/` 目录存放本项目自己的资源:
-  - `assets/icons/*.svg` —— 自绘或取自开源图标集(许可需核对,见 §9)。
-  - `assets/fonts/` —— **Noto Sans SC**(SIL OFL 1.1)作为中文字体,另配一套拉丁字体。
-- 实现 `gpui::AssetSource`(`crates/gpui/src/assets.rs:13`)把这些资源喂给 GPUI,并在启动时注册字体。
-- **不**使用 `ui::Icon` 搭配 Zed 的 `IconName` 枚举(那些 SVG 在 `assets` 里,我们没有);改为自建图标名空间。`icons` crate 只借用其"名称枚举"这一便利模式,不复用其资源。
+**字体**:
+- **必须自带中文字体**:zed 的 `assets` 只有拉丁字体,中文会渲染成豆腐块。字体选 **Noto Sans SC**(SIL OFL 1.1,可自由分发与嵌入)。
+- 拉丁字形建议同用 Noto Sans 系列,保持视觉一致。
+- 在启动时通过自建的 `AssetSource` + `gpui` 的字体注册 API 加载。
 
-**取舍**:用 GPL-3.0 的 zed 组件(`ui`/`theme`/`icons`)时,本项目整体需按 GPL-3.0 分发(见 §9)。图标与字体则尽量选许可宽松的(OFL / MIT / Apache-2.0),便于未来替换。
+**AssetSource 实现**:
+- 实现 `gpui::AssetSource`(`crates/gpui/src/assets.rs:13`),提供 `assets/icons/*.svg` 与 `assets/fonts/*`。
+- **不使用** `ui::Icon` 搭配 Zed 的 `IconName` 枚举(那些 SVG 在 `assets` 里,我们没有);改为自建图标名空间,名字沿用 calibre 的语义名(`book.svg` / `books_in_series.svg` / `convert.svg` / `search.svg` / `gear.svg` / `metadata.svg` / `remove_books.svg` / `save.svg` / `tags.svg` / `rating.svg` / `reader.svg` / `trash.svg` / `sort.svg` / `layout.svg` / `cover_flow.svg` / `bookshelf.svg` / `fts.svg` / `vl.svg` / `notes.svg` / `toc.svg` / `markers.svg` …),与上游一一对应,方便对照实现。
+
+**取舍**:图标与 zed 的 `ui`/`theme`/`icons` 同为 GPL-3.0-or-later;字体用 OFL 1.1。整体仓库按 GPL-3.0-or-later 分发(见 §8 决策 26)。
 
 ---
 
@@ -671,7 +709,7 @@ calibre 的模板语言(General Program Mode + 模板表达式)是复合列、`s
 
 1. `calibre-core`:schema 迁移、字段注册表、`Metadata` 模型、存储层、排序键。
 2. `calibre-core`:搜索语言解析器 + SQL 编译器 + 单元测试(覆盖 D3 全部语法分支)。
-3. `calibre-formats`(**最小切片**):EPUB / TXT / FB2 的**只读**元数据插件 + OEBBook 最小骨架 + 默认封面生成器。
+3. `calibre-formats`(**最小切片**):**EPUB2 + EPUB3 只读**元数据插件 + OEBBook 最小骨架 + 默认封面生成器。EPUB 是 P0 格式,读端必须同时正确处理 NCX 目录与 `nav.xhtml` 目录。
 4. `calibre-core`:导入器 —— 单文件 / 多选 / 文件夹 / **从既有 calibre 书库**(D11)。
 5. `calibre-app`:主窗口布局(工具栏 / 菜单栏 / 搜索栏 / 5 面板 / 分隔条 / 状态栏)。
 6. `calibre-app`:标签浏览器树;书列表 `ui::Table`;书籍详情;搜索框(防抖 + 历史 + 限制 + 虚拟库)。
@@ -684,8 +722,8 @@ calibre 的模板语言(General Program Mode + 模板表达式)是复合列、`s
 ### Phase 2 —— 格式与元数据
 
 1. `calibre-formats`:`Metadata` 序列化(`metadata.json` 边车)与 `Metadata` ↔ `OEBBook` 转换(元数据模型本体已在 Phase 1 落进 `calibre-core`)。
-2. `calibre-formats`:OEBBook 中间表示补全 + EPUB **写** + 封面嵌入(Phase 1 已有 EPUB 只读)。
-3. 格式插件补齐:TXT / HTML / HTMLZ / FB2 写、MOBI(含 AZW3)/ AZW / RTF / ODT。
+2. `calibre-formats`:**EPUB2 / EPUB3 写**(P0)—— 统一按 EPUB2 结构生成,再按需 `upgrade_to_epub3`;封面嵌入、EPUB3 的 `dcterms:modified` 与 `nav.xhtml` 生成。
+3. 格式插件补齐:TXT / HTML / HTMLZ / FB2 / MOBI(含 AZW3)/ RTF / ODT。**PDF 留占位符**(§8 决策 27)。
 4. 转换管线骨架 + 高频 30 个 pipeline 选项 + `ebook-convert` 等价 CLI。
 5. `calibre-app`:转换为 GUI 动作(工具栏"Convert Books")。
 
@@ -694,9 +732,9 @@ calibre 的模板语言(General Program Mode + 模板表达式)是复合列、`s
 ### Phase 3 —— 阅读器 + 扩展格式
 
 1. 阅读器骨架:内容抽取 → 块流 → 排版 → 分页/滚动。
-2. EPUB / FB2 / TXT 阅读;目录导航;主题与排版设置;阅读位置。
+2. **EPUB2 / EPUB3**(P0,目录同时支持 NCX 与 `nav.xhtml`)/ FB2 / TXT 阅读;目录导航;主题与排版设置;阅读位置。
 3. 注释/书签/高亮 + 存储。
-4. 补齐格式:PDF 元数据、Comic、LRF、PDB、SNB、TCR、PML、RB、DJVU、CHM、LIT、DOCX、AZW4。
+4. 补齐格式:Comic、LRF、PDB、SNB、TCR、PML、RB、DJVU、CHM、LIT、DOCX、AZW4。**PDF 仍为占位符**(§8 决策 27)。
 5. 补齐剩余 pipeline 选项。
 
 ### Phase 4 —— 编辑器与模板系统
@@ -787,25 +825,28 @@ cargo fmt --check
 | 23 | Phase 1 范围 | 把 EPUB/TXT/FB2 **只读**元数据 + 封面生成提前到 Phase 1 | Phase 1 的验收要求"元数据正确 + 能编辑封面",离不开格式解析 |
 | 24 | 书籍详情是否内联编辑 | 不做,只做模态对话框 | 与上游一致 |
 | 25 | 默认排序 | `timestamp` **降序**(最新在前) | 上游 `DEFAULT_SORT = ('timestamp', False)`,第二项是 ascending 标志 |
+| 26 | **许可证** | **整仓 GPL-3.0-or-later** | **用户已拍板**。calibre 是 GPLv3,zed 的 `ui`/`theme`/`icons` 同为 GPL-3.0-or-later,图标直接取自 calibre → 整体按 GPL-3.0-or-later 分发。字体 Noto Sans SC 为 OFL 1.1,单独声明 |
+| 27 | **PDF** | **暂不做,留占位符** | **用户已拍板**("不着急,可以先放占位符")。格式注册表里保留 `pdf` 的占位插件(读元数据可返回 `Unsupported` 错误),接口与选项先留好,实现推迟到 Phase 3 之后按需补 |
+| 28 | **图标** | **使用 calibre 原版**(`imgsrc/*.svg`,193 个) | **用户已拍板**。GPUI 原生支持 SVG,无需上游的 `rsvg-convert` 栅格化步骤;复制进本仓库 `assets/icons/` 以保持自包含,并在 `assets/NOTICE` 记录来源与许可 |
+| 29 | **EPUB 优先级** | **EPUB2 与 EPUB3 为 P0**,排在所有格式之前 | **用户已拍板**。读取 Phase 1 就要支持两版;写入 Phase 2 支持两版,默认输出 EPUB2(与上游一致),EPUB3 需显式指定 |
 
 ---
 
 ## 9. 未决问题(需要人来拍板)
 
-按重要性排序。三项都不阻塞 Phase 0/1,但越早定越省事。
+**原 3 项已全部拍板(见 §8 决策 26/27/28):许可证 = GPL-3.0-or-later;PDF = 暂不做、留占位符;图标 = calibre 原版。**
 
-1. **许可证策略**(最要紧,影响能不能公开发布)
-   calibre 是 GPLv3,本项目是衍生实现;且依赖了 zed 的 `ui`/`theme`/`icons`(同为 GPL-3.0-or-later)。
-   **建议:整仓 GPL-3.0-or-later**,与上游一致。这是法律问题,我不替你拍板。
-2. **PDF 转换依赖**(Phase 3 才需要)
-   上游 calibre 依赖外部 `poppler`/`xpdf` 做 PDF→HTML。本项目可选:
-   (a) 引入 `pdfium`(纯 Rust 绑定,体积大、需编译 C++,但无外部依赖);
-   (b) 只做"读 PDF 元数据",正文转换依赖用户自装的 `poppler`;
-   (c) 折中:元数据内置,正文转换走外部 `pdftotext`/`pdftohtml` 子进程。
-   **建议 (c)**:与上游行为一致且不引入重依赖。
-3. **图标集来源**
-   D12 决定自建 `AssetSource` + 自带 Noto Sans SC(OFL 1.1,已定)。图标本身:自绘 SVG / 采用开源图标集(如 Lucide,ISC 许可)/ 沿用 Zed 的图标(但需 `assets`,与 D12 冲突)。
-   **建议:自绘一套最小图标集**(约 40 个:打开/保存/导入/删除/搜索/设置/书籍/标签等),许可干净、体积小。
+**仍然开放(不阻塞任何阶段,但越早定越省事):**
+
+1. **中文字体的具体选择**(用户已同意"自带中文字体",但具体哪一款)
+   候选:**Noto Sans SC**(SIL OFL 1.1,字重齐全,最稳)、**思源黑体 / Source Han Sans**(OFL,与 Adobe 联合开发,字形更精致但文件更大)、**HarmonyOS Sans**(免费商用但非开源,条款不明确)。
+   **建议 Noto Sans SC**:许可最干净、字重齐全、subsets 工具成熟(可裁剪到 ~5 MB 的常用字集)。
+2. **深色主题的图标适配**
+   calibre 的图标有 `-for-dark-theme` / `-for-light-theme` 变体,也有自动反色的 `modified-for-*`。我们照搬 calibre 的变体规则即可,但**要不要额外提供"跟随 UI 主题自动切换"**(即把图标按当前主题重新着色)尚未定。
+   **建议:先照搬 calibre 的变体选择规则**(见 D12),不做自动着色;若深色主题下观感不好再议。
+3. **仓库名与二进制名**
+   目前用 `calibre2Rust` 作为目录名。二进制名 `calibre2rust`?`calibre-rs`?还是与上游对齐叫 `calibre`?
+   **建议 `calibre2rust`**(与目录名一致,且不与系统里的 `calibre` 冲突)。
 
 ---
 
@@ -836,6 +877,10 @@ cargo fmt --check
 | **格式插件实现(9.x 已集中)** | `src/calibre/ebooks/conversion/plugins/{format}_{input,output}.py` —— `ebooks/{epub,mobi,fb2,...}/` 下**已无插件代码** |
 | 转换管线 | `src/calibre/ebooks/conversion/plumber.py`, `cli.py` |
 | 格式底层实现 | `src/calibre/ebooks/{epub,mobi,fb2,html,rtf,odt,comic,pdf,...}/` |
+| **EPUB2 → EPUB3 升级** | `src/calibre/ebooks/oeb/polish/upgrade.py`(`epub_2_to_3:152` / `collect_properties:67` / `create_nav:140`) |
+| EPUB 容器读写 | `src/calibre/ebooks/epub/__init__.py`(`initialize_container`) |
+| **图标源文件** | `calibre/imgsrc/*.svg`(193 个,含 `imgsrc/plugins/`) |
+| 图标栅格化脚本(我们不需要) | `calibre/imgsrc/generate.py` |
 | 封面生成 | `src/calibre/ebooks/covers.py` |
 | 内容服务器 | `src/calibre/srv/` |
 | CLI 命令 | `src/calibre/db/cli/`, `src/calibre/ebooks/conversion/cli.py` |

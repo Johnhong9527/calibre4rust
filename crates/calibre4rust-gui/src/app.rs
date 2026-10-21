@@ -17,9 +17,10 @@ pub fn default_library_path() -> PathBuf {
     if let Ok(path) = std::env::var("CALIBRE4RUST_LIBRARY") {
         return PathBuf::from(path);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
-    PathBuf::from(home)
-        .join("Library/Application Support/calibre4rust/library")
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("calibre4rust"));
+    home.join("Library/Application Support/calibre4rust/library")
         .join("calibre.db")
 }
 

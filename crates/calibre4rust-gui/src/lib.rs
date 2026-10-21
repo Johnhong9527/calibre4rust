@@ -17,8 +17,16 @@ mod architecture_tests {
     /// 理由:caliberate 的 `ARCHITECTURE.md` 要求
     /// *"Protocol handlers must not independently reimplement database queries,
     /// search rules, or path-selection logic."* —— 前端不得绕过 service 层直接查 SQLite。
+    ///
+    /// 扫描**整个文件内容**而不是只扫 `use` 行:Rust 里不写 `use` 也能直接用
+    /// 直接写 `Database::open_path(...)` 这样的全路径(连 `use` 都不用),只看 `use` 会被绕过。
+    ///
+    /// 目标串带下划线(caliberate 的 crate 名都是「caliberate」加下划线再跟名字),
+    /// 这样散文里的 "caliberate" 不会误报;目标串在运行时拼接,免得这个测试自己的
+    /// 源码命中自己。
     #[test]
-    fn only_service_module_imports_caliberate_crates() {
+    fn only_service_module_may_touch_backend_crates() {
+        let needle = ["caliber", "ate_"].concat();
         let source_directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders = Vec::new();
         for path in source_files(&source_directory) {
@@ -30,14 +38,8 @@ mod architecture_tests {
                 continue;
             }
             let contents = std::fs::read_to_string(&path).expect("read source file");
-            for (index, line) in contents.lines().enumerate() {
-                let trimmed = line.trim_start();
-                if trimmed.starts_with("use calibre")
-                    || trimmed.starts_with("pub use calibre")
-                    || trimmed.starts_with("use ::calibre")
-                {
-                    offenders.push(format!("{file_name}:{}", index + 1));
-                }
+            if contents.contains(&needle) {
+                offenders.push(file_name);
             }
         }
         assert!(

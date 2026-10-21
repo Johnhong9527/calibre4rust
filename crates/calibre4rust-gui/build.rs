@@ -46,7 +46,27 @@ fn main() {
             icons_root.join(relative).to_string_lossy()
         );
     }
+    // 目录本身也要盯着:在 `icons/plugins/` 里新增文件时,上面按文件列出的
+    // `rerun-if-changed` 不会触发重建,需要额外盯住每个子目录。
     println!("cargo:rerun-if-changed={}", icons_root.to_string_lossy());
+    for directory in sub_directories(&icons_root) {
+        println!("cargo:rerun-if-changed={}", directory.to_string_lossy());
+    }
+}
+
+fn sub_directories(root: &Path) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    let Ok(entries) = fs::read_dir(root) else {
+        return directories;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            directories.push(path.clone());
+            directories.extend(sub_directories(&path));
+        }
+    }
+    directories
 }
 
 fn collect_svgs(root: &Path, directory: &Path, collected: &mut Vec<PathBuf>) {

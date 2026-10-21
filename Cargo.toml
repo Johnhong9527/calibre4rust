@@ -28,6 +28,7 @@ caliberate-db         = { git = "https://github.com/sguzman/caliberate", rev = "
 caliberate-library    = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
 
 anyhow    = "1"
+rusqlite  = { version = "0.39", features = ["bundled"] }
 serde     = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing   = "0.1"

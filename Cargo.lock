@@ -799,6 +799,7 @@ dependencies = [
  "icons",
  "image",
  "menu",
+ "rusqlite",
  "serde",
  "serde_json",
  "theme",

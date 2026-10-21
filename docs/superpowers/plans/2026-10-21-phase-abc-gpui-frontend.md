@@ -4,11 +4,11 @@
 
 **Goal:** 交付一个能打开 caliberate 书库、以表格视图浏览并排序全部书籍的 GPUI 桌面应用,主窗口布局对齐 calibre。
 
-**Architecture:** 单 crate `calibre2rust-gui`。它只做 GPUI 呈现层,后端全部经 `service.rs` 调用 caliberate 的 `caliberate-db` / `caliberate-library`。根 `Cargo.toml` 用两个 git 依赖锁定上游:zed 的 GPUI 全家桶(rev `92447a17`)与 caliberate(rev `f9c41d7`)。不新建任何数据库、不重写搜索、不实现导入器。
+**Architecture:** 单 crate `calibre4rust-gui`。它只做 GPUI 呈现层,后端全部经 `service.rs` 调用 caliberate 的 `caliberate-db` / `caliberate-library`。根 `Cargo.toml` 用两个 git 依赖锁定上游:zed 的 GPUI 全家桶(rev `92447a17`)与 caliberate(rev `f9c41d7`)。不新建任何数据库、不重写搜索、不实现导入器。
 
 **Tech Stack:** Rust 1.98.1 / edition 2024、GPUI(git)、caliberate core/db/library(git)、rusqlite(间接)、serde_json、`ui::Table`、GPUI `uniform_list`。
 
-**Spec:** `docs/superpowers/specs/2026-10-21-calibre2rust-design.md`(下称"spec";§编号均指该文档)
+**Spec:** `docs/superpowers/specs/2026-10-21-calibre4rust-design.md`(下称"spec";§编号均指该文档)
 
 ---
 
@@ -67,7 +67,7 @@ spec 隐含但没有 task 的测试能覆盖的失败模式 —— 每条在下�
 ## 文件结构
 
 ```
-calibre2Rust/
+calibre4rust/
 ├── Cargo.toml                      # workspace 根:zed git 依赖 + caliberate git 依赖 + async-task patch
 ├── rust-toolchain.toml             # channel = "1.98.1"
 ├── .cargo/config.toml              # MACOSX_DEPLOYMENT_TARGET
@@ -77,8 +77,8 @@ calibre2Rust/
 │   ├── NOTICE
 │   └── icons/*.svg                 # 从 ../calibre/imgsrc/ 复制
 ├── crates/
-│   └── calibre2rust-gui/
-│       ├── Cargo.toml              # [lib] path = "src/lib.rs" + [[bin]] calibre2rust
+│   └── calibre4rust-gui/
+│       ├── Cargo.toml              # [lib] path = "src/lib.rs" + [[bin]] calibre4rust
 │       ├── build.rs                # 扫描 assets/icons 生成静态表
 │       └── src/
 │           ├── lib.rs              # 库根:pub mod 声明
@@ -110,19 +110,19 @@ calibre2Rust/
 
 **Files:**
 - Create: `Cargo.toml`、`rust-toolchain.toml`、`.cargo/config.toml`、`LICENSE`
-- Create: `crates/calibre2rust-gui/Cargo.toml`、`crates/calibre2rust-gui/src/lib.rs`、`crates/calibre2rust-gui/src/main.rs`、`crates/calibre2rust-gui/src/theme_provider.rs`、`crates/calibre2rust-gui/src/assets.rs`、`crates/calibre2rust-gui/build.rs`
+- Create: `crates/calibre4rust-gui/Cargo.toml`、`crates/calibre4rust-gui/src/lib.rs`、`crates/calibre4rust-gui/src/main.rs`、`crates/calibre4rust-gui/src/theme_provider.rs`、`crates/calibre4rust-gui/src/assets.rs`、`crates/calibre4rust-gui/build.rs`
 - Create: `assets/NOTICE`、`assets/icons/*.svg`
 - Modify: `README.md`(只追加内容,**不改用户写的标题行**)
-- Test: `crates/calibre2rust-gui/src/assets.rs`(内联 `#[cfg(test)]`)
+- Test: `crates/calibre4rust-gui/src/assets.rs`(内联 `#[cfg(test)]`)
 
 **Interfaces:**
 - Consumes: 无
 - Produces:
-  - crate `calibre2rust_gui`(lib)+ 二进制 `calibre2rust`
-  - `calibre2rust_gui::assets::CalibreAssets` —— `pub struct CalibreAssets;`,实现 `gpui::AssetSource`
-  - `calibre2rust_gui::theme_provider::CalibreThemeSettings` —— `pub struct CalibreThemeSettings;`,实现 `theme::ThemeSettingsProvider`
-  - `calibre2rust_gui::app::run() -> anyhow::Result<()>` —— 二进制入口调用它
-  - `calibre2rust_gui::assets::icon_bytes(name: &str) -> Option<&'static [u8]>` —— 按图标名取 SVG 字节
+  - crate `calibre4rust_gui`(lib)+ 二进制 `calibre4rust`
+  - `calibre4rust_gui::assets::CalibreAssets` —— `pub struct CalibreAssets;`,实现 `gpui::AssetSource`
+  - `calibre4rust_gui::theme_provider::CalibreThemeSettings` —— `pub struct CalibreThemeSettings;`,实现 `theme::ThemeSettingsProvider`
+  - `calibre4rust_gui::app::run() -> anyhow::Result<()>` —— 二进制入口调用它
+  - `calibre4rust_gui::assets::icon_bytes(name: &str) -> Option<&'static [u8]>` —— 按图标名取 SVG 字节
 
 - [ ] **Step 1: 装工具链**
 
@@ -138,7 +138,7 @@ Expected: `rustc 1.98.1 (...)`。若直连也通,可不用镜像。
 ```toml
 [workspace]
 resolver = "2"
-members = ["crates/calibre2rust-gui"]
+members = ["crates/calibre4rust-gui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -192,21 +192,21 @@ MACOSX_DEPLOYMENT_TARGET = "10.15.7"
 
 - [ ] **Step 3: 写 crate 清单与骨架**
 
-`crates/calibre2rust-gui/Cargo.toml`:
+`crates/calibre4rust-gui/Cargo.toml`:
 ```toml
 [package]
-name = "calibre2rust_gui"
+name = "calibre4rust-gui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "calibre2rust_gui"
+name = "calibre4rust_gui"
 path = "src/lib.rs"
 
 [[bin]]
-name = "calibre2rust"
+name = "calibre4rust"
 path = "src/main.rs"
 
 [dependencies]
@@ -234,17 +234,17 @@ image              = { workspace = true }
 [build-dependencies]
 ```
 
-`crates/calibre2rust-gui/src/lib.rs`:
+`crates/calibre4rust-gui/src/lib.rs`:
 ```rust
 pub mod app;
 pub mod assets;
 pub mod theme_provider;
 ```
 
-`crates/calibre2rust-gui/src/main.rs`:
+`crates/calibre4rust-gui/src/main.rs`:
 ```rust
 fn main() -> anyhow::Result<()> {
-    calibre2rust_gui::app::run()
+    calibre4rust_gui::app::run()
 }
 ```
 
@@ -270,7 +270,7 @@ cp -r ../calibre/imgsrc/plugins assets/icons/plugins
 
 - [ ] **Step 5: 写 `build.rs` 生成图标静态表**
 
-`crates/calibre2rust-gui/build.rs`:
+`crates/calibre4rust-gui/build.rs`:
 - 递归扫描 `../../assets/icons` 下的 `.svg`
 - 生成到 `$OUT_DIR/icons_generated.rs`:
   ```rust
@@ -286,7 +286,7 @@ cp -r ../calibre/imgsrc/plugins assets/icons/plugins
 
 - [ ] **Step 6: 写 `AssetSource` 实现与测试**
 
-`crates/calibre2rust-gui/src/assets.rs`:
+`crates/calibre4rust-gui/src/assets.rs`:
 ```rust
 use gpui::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
@@ -358,12 +358,12 @@ mod tests {
 
 - [ ] **Step 7: 跑测试确认通过**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin assets::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin assets::`
 Expected: 4 passed
 
 - [ ] **Step 8: 写 `ThemeSettingsProvider`**
 
-`crates/calibre2rust-gui/src/theme_provider.rs`:
+`crates/calibre4rust-gui/src/theme_provider.rs`:
 ```rust
 use gpui::{App, Font, FontFallbacks, Pixels};
 use std::sync::OnceLock;
@@ -409,7 +409,7 @@ impl ThemeSettingsProvider for CalibreThemeSettings {
 
 - [ ] **Step 9: 写启动代码与窗口**
 
-`crates/calibre2rust-gui/src/app.rs`:
+`crates/calibre4rust-gui/src/app.rs`:
 ```rust
 use gpui::{App, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui::prelude::*;
@@ -451,7 +451,7 @@ impl Render for RootView {
             .flex_col()
             .p_4()
             .gap_2()
-            .child("calibre2rust —— 中文字体测试:你好,世界")
+            .child("calibre4rust —— 中文字体测试:你好,世界")
             .child(ui::Button::new("点击我").on_click(|_, _window, _cx| {}))
     }
 }
@@ -468,7 +468,7 @@ Expected: 编译成功。
 
 - [ ] **Step 11: 肉眼验证(需要录屏权限的机器)**
 
-Run: `./target/aarch64-apple-darwin/debug/calibre2rust`
+Run: `./target/aarch64-apple-darwin/debug/calibre4rust`
 Expected: 弹出窗口,中文"你好,世界"**不是豆腐块**,按钮可点。
 
 - [ ] **Step 12: 追加 README(不改用户写的标题)**
@@ -493,23 +493,23 @@ git commit -m "feat: workspace 骨架与 GPUI 启动
 ## Task 2: service 层(caliberate 接入)
 
 **Files:**
-- Create: `crates/calibre2rust-gui/src/service.rs`
+- Create: `crates/calibre4rust-gui/src/service.rs`
 - Create: `docs/calibre-gaps.md`
-- Modify: `crates/calibre2rust-gui/src/lib.rs`(加 `pub mod service;`)
-- Modify: `crates/calibre2rust-gui/src/app.rs`(窗口显示书数)
-- Test: `crates/calibre2rust-gui/src/service.rs`
+- Modify: `crates/calibre4rust-gui/src/lib.rs`(加 `pub mod service;`)
+- Modify: `crates/calibre4rust-gui/src/app.rs`(窗口显示书数)
+- Test: `crates/calibre4rust-gui/src/service.rs`
 
 **Interfaces:**
 - Consumes: `caliberate_core::config::ControlPlane`、`caliberate_db::database::Database`、`caliberate_library::catalog::{LibraryCatalog, LibraryBook}`、`caliberate_library::query::{LibraryQuery, LibrarySortField, LibraryFacetKind, LibraryFacetValue}`、`caliberate_library::summary::LibrarySummaryPage`
 - Produces:
-  - `calibre2rust_gui::service::LibraryService` —— 结构体
+  - `calibre4rust_gui::service::LibraryService` —— 结构体
   - `LibraryService::open(config: &ControlPlane) -> anyhow::Result<Self>`
   - `LibraryService::book_count(&self) -> anyhow::Result<usize>`
   - `LibraryService::query_summary_page(&self, query: &LibraryQuery) -> anyhow::Result<LibrarySummaryPage>`
   - `LibraryService::list_facets(&self, kind: LibraryFacetKind) -> anyhow::Result<Vec<LibraryFacetValue>>`
   - `LibraryService::get_book(&self, id: i64) -> anyhow::Result<Option<LibraryBook>>`
-  - `calibre2rust_gui::service::default_library_query() -> LibraryQuery`
-  - `calibre2rust_gui::service::SUMMARY_CHUNK_SIZE: usize` —— 2000
+  - `calibre4rust_gui::service::default_library_query() -> LibraryQuery`
+  - `calibre4rust_gui::service::SUMMARY_CHUNK_SIZE: usize` —— 2000
 
 > **所有权注意**:`LibraryCatalog<'a>` 借用 `&'a dyn LibraryBackend`,不能自引用。本实现照搬 caliberate egui 侧的做法(`crates/gui/src/views.rs:90`):每次调用现建 `LibraryCatalog::new(&self.database)`。**不要**用 `Box::leak` 或自引用结构绕过。
 
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn opening_a_missing_library_directory_creates_it() {
-        let dir = std::env::temp_dir().join(format!("calibre2rust-svc-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("calibre4rust-svc-{}", uuid::Uuid::new_v4()));
         let config = test_control_plane(&dir);
         let service = LibraryService::open(&config).expect("open should create the library");
         assert_eq!(service.book_count().expect("count"), 0);
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn opening_a_corrupt_database_is_an_error_not_a_panic() {
-        let dir = std::env::temp_dir().join(format!("calibre2rust-svc-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("calibre4rust-svc-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         // 写一个不是 SQLite 的文件当数据库
         std::fs::write(dir.join("calibre.db"), b"this is not a sqlite database").expect("write");
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn a_failing_database_opens_yields_a_readable_message() {
         // service.rs 的错误信息必须包含"书库"二字,便于 UI 直接展示给用户
-        let dir = std::env::temp_dir().join(format!("calibre2rust-svc-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("calibre4rust-svc-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         std::fs::write(dir.join("calibre.db"), b"not a database").expect("write");
         let config = test_control_plane(&dir);
@@ -600,7 +600,7 @@ mod tests {
 
 - [ ] **Step 3: 跑测试确认失败**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin service::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin service::`
 Expected: 编译错误 —— `LibraryService` 未定义。
 
 - [ ] **Step 4: 实现 `service.rs`**
@@ -660,7 +660,7 @@ impl LibraryService {
 
 - [ ] **Step 5: 写架构边界测试**
 
-在 `crates/calibre2rust-gui/src/lib.rs` 加测试,用源码扫描强制"只有 `service.rs` 能 import `caliberate_*`":
+在 `crates/calibre4rust-gui/src/lib.rs` 加测试,用源码扫描强制"只有 `service.rs` 能 import `caliberate_*`":
 
 ```rust
 #[cfg(test)]
@@ -694,7 +694,7 @@ mod architecture_tests {
 
 - [ ] **Step 6: 跑测试确认通过**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin`
 Expected: 全部通过(含架构边界测试)。
 
 - [ ] **Step 7: 窗口显示书数**
@@ -708,7 +708,7 @@ Expected: 全部通过(含架构边界测试)。
 ```markdown
 # caliberate service 缺口
 
-本文件记录 calibre2rust(GPUI 前端)在对接 caliberate 时发现的 service 能力缺口。
+本文件记录 calibre4rust(GPUI 前端)在对接 caliberate 时发现的 service 能力缺口。
 
 **规则**:前端不得绕过 service 直接查 SQLite 来填补这些缺口;应在此登记,由 caliberate 的架构师决定是否补齐。
 
@@ -737,21 +737,21 @@ git commit -m "feat: service 层接入 caliberate,含架构边界测试
 ## Task 3: 主窗口骨架
 
 **Files:**
-- Create: `crates/calibre2rust-gui/src/actions.rs`、`crates/calibre2rust-gui/src/window.rs`
-- Modify: `crates/calibre2rust-gui/src/lib.rs`、`crates/calibre2rust-gui/src/app.rs`
-- Test: `crates/calibre2rust-gui/src/window.rs`
+- Create: `crates/calibre4rust-gui/src/actions.rs`、`crates/calibre4rust-gui/src/window.rs`
+- Modify: `crates/calibre4rust-gui/src/lib.rs`、`crates/calibre4rust-gui/src/app.rs`
+- Test: `crates/calibre4rust-gui/src/window.rs`
 
 **Interfaces:**
-- Consumes: `calibre2rust_gui::service::LibraryService`
+- Consumes: `calibre4rust_gui::service::LibraryService`
 - Produces:
-  - `calibre2rust_gui::window::MainWindow` —— `Entity<MainWindow>`
+  - `calibre4rust_gui::window::MainWindow` —— `Entity<MainWindow>`
   - `MainWindow::new(service: Entity<LibraryService>, cx: &mut App) -> Entity<MainWindow>`
-  - `calibre2rust_gui::window::toolbar_actions() -> Vec<&'static str>`
-  - `calibre2rust_gui::window::menubar_actions() -> Vec<&'static str>`
-  - `calibre2rust_gui::window::PanelLayout` —— 枚举 `Wide` / `Narrow`
-  - `calibre2rust_gui::window::PANEL_HIDE_THRESHOLD: f32` —— 10.0
-  - `calibre2rust_gui::window::PANEL_SHOW_THRESHOLD: f32` —— 50.0
-  - `calibre2rust_gui::actions::*` —— `gpui::actions!` 定义的 action 单元结构
+  - `calibre4rust_gui::window::toolbar_actions() -> Vec<&'static str>`
+  - `calibre4rust_gui::window::menubar_actions() -> Vec<&'static str>`
+  - `calibre4rust_gui::window::PanelLayout` —— 枚举 `Wide` / `Narrow`
+  - `calibre4rust_gui::window::PANEL_HIDE_THRESHOLD: f32` —— 10.0
+  - `calibre4rust_gui::window::PANEL_SHOW_THRESHOLD: f32` —— 50.0
+  - `calibre4rust_gui::actions::*` —— `gpui::actions!` 定义的 action 单元结构
 
 - [ ] **Step 1: 写失败测试**
 
@@ -801,7 +801,7 @@ mod tests {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin window::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin window::`
 Expected: 编译错误。
 
 - [ ] **Step 3: 实现 `actions.rs`**
@@ -810,7 +810,7 @@ Expected: 编译错误。
 use gpui::actions;
 
 actions!(
-    calibre2rust,
+    calibre4rust,
     [
         AddBooks,
         EditMetadata,
@@ -869,12 +869,12 @@ pub struct MainWindow {
 
 - [ ] **Step 5: 跑测试确认通过**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin window::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin window::`
 Expected: 3 passed
 
 - [ ] **Step 6: 编译并肉眼验证**
 
-Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre2rust`
+Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre4rust`
 Expected: 窗口显示工具栏(无 Help/Preferences)+ 搜索栏占位 + 三栏空面板 + 状态栏;拖动中缝可调整左栏宽度;拖过阈值面板隐藏。
 
 - [ ] **Step 7: 提交**
@@ -889,25 +889,25 @@ git commit -m "feat(app): 主窗口骨架,工具栏/菜单栏/搜索栏/五面�
 ## Task 4: 书列表(表格视图)
 
 **Files:**
-- Create: `crates/calibre2rust-gui/src/book_list.rs`
-- Modify: `crates/calibre2rust-gui/src/window.rs`、`crates/calibre2rust-gui/src/lib.rs`
-- Test: `crates/calibre2rust-gui/src/book_list.rs`
+- Create: `crates/calibre4rust-gui/src/book_list.rs`
+- Modify: `crates/calibre4rust-gui/src/window.rs`、`crates/calibre4rust-gui/src/lib.rs`
+- Test: `crates/calibre4rust-gui/src/book_list.rs`
 
 **Interfaces:**
-- Consumes: `calibre2rust_gui::service::{LibraryService, default_library_query, SUMMARY_CHUNK_SIZE}`
+- Consumes: `calibre4rust_gui::service::{LibraryService, default_library_query, SUMMARY_CHUNK_SIZE}`
 - Produces:
-  - `calibre2rust_gui::book_list::BookList` —— `Entity<BookList>`
+  - `calibre4rust_gui::book_list::BookList` —— `Entity<BookList>`
   - `BookList::new(service: Entity<LibraryService>, cx: &mut App) -> Entity<BookList>`
   - `BookList::refresh(&mut self, cx: &mut Context<Self>)`
   - `BookList::row_count(&self) -> usize`
   - `BookList::selected_book_ids(&self) -> Vec<i64>`
-  - `calibre2rust_gui::book_list::BookColumn` —— 枚举
-  - `calibre2rust_gui::book_list::default_visible_columns() -> Vec<BookColumn>`
-  - `calibre2rust_gui::book_list::column_label(column: BookColumn) -> &'static str`
-  - `calibre2rust_gui::book_list::sort_field_for(column: BookColumn) -> Option<LibrarySortField>`
-  - `calibre2rust_gui::book_list::format_row_cell(column: BookColumn, summary: &LibraryBookSummary) -> String`
-  - `calibre2rust_gui::book_list::chunk_offsets(total: usize, chunk_size: usize) -> Vec<usize>`
-  - `calibre2rust_gui::book_list::load_all_summaries(service: &LibraryService, query: &LibraryQuery) -> anyhow::Result<Vec<LibraryBookSummary>>`
+  - `calibre4rust_gui::book_list::BookColumn` —— 枚举
+  - `calibre4rust_gui::book_list::default_visible_columns() -> Vec<BookColumn>`
+  - `calibre4rust_gui::book_list::column_label(column: BookColumn) -> &'static str`
+  - `calibre4rust_gui::book_list::sort_field_for(column: BookColumn) -> Option<LibrarySortField>`
+  - `calibre4rust_gui::book_list::format_row_cell(column: BookColumn, summary: &LibraryBookSummary) -> String`
+  - `calibre4rust_gui::book_list::chunk_offsets(total: usize, chunk_size: usize) -> Vec<usize>`
+  - `calibre4rust_gui::book_list::load_all_summaries(service: &LibraryService, query: &LibraryQuery) -> anyhow::Result<Vec<LibraryBookSummary>>`
 
 ```rust
 pub enum BookColumn {
@@ -1003,7 +1003,7 @@ mod tests {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin book_list::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin book_list::`
 Expected: 编译错误。
 
 - [ ] **Step 3: 实现列定义与排序映射**
@@ -1139,12 +1139,12 @@ pub struct BookList {
 
 - [ ] **Step 6: 跑测试确认通过**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin book_list::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin book_list::`
 Expected: 3 passed
 
 - [ ] **Step 7: 编译并肉眼验证**
 
-Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre2rust`
+Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre4rust`
 Expected:
 - 状态栏显示书数;
 - 点击表头"title"可切换升降序;
@@ -1163,21 +1163,21 @@ git commit -m "feat(app): 书列表表格视图,分块加载 + 单级排序 + �
 ## Task 5: 视图状态持久化(面板尺寸/列宽/列可见性)
 
 **Files:**
-- Create: `crates/calibre2rust-gui/src/view_state.rs`
-- Modify: `crates/calibre2rust-gui/src/window.rs`、`crates/calibre2rust-gui/src/book_list.rs`、`crates/calibre2rust-gui/src/lib.rs`
-- Test: `crates/calibre2rust-gui/src/view_state.rs`
+- Create: `crates/calibre4rust-gui/src/view_state.rs`
+- Modify: `crates/calibre4rust-gui/src/window.rs`、`crates/calibre4rust-gui/src/book_list.rs`、`crates/calibre4rust-gui/src/lib.rs`
+- Test: `crates/calibre4rust-gui/src/view_state.rs`
 
 **Interfaces:**
 - Consumes: `serde` / `serde_json`
 - Produces:
-  - `calibre2rust_gui::view_state::ViewState` —— 结构体(可序列化)
+  - `calibre4rust_gui::view_state::ViewState` —— 结构体(可序列化)
   - `ViewState::default() -> ViewState`
   - `ViewState::load(path: &Path) -> ViewState` —— 文件不存在或解析失败时返回 `default()`,**不 panic、不报错**
   - `ViewState::save(&self, path: &Path) -> anyhow::Result<()>`
   - `ViewState::clamp_to_window(&mut self, window_width: f32, window_height: f32)`
-  - `calibre2rust_gui::view_state::MIN_BOOK_LIST_WIDTH: f32` —— 320.0
-  - `calibre2rust_gui::view_state::MIN_COLUMN_WIDTH: f32` —— 24.0
-  - `calibre2rust_gui::view_state::MAX_COLUMN_WIDTH: f32` —— 1200.0
+  - `calibre4rust_gui::view_state::MIN_BOOK_LIST_WIDTH: f32` —— 320.0
+  - `calibre4rust_gui::view_state::MIN_COLUMN_WIDTH: f32` —— 24.0
+  - `calibre4rust_gui::view_state::MAX_COLUMN_WIDTH: f32` —— 1200.0
 
 ```rust
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1206,13 +1206,13 @@ mod tests {
 
     #[test]
     fn missing_file_yields_default_state() {
-        let state = ViewState::load(Path::new("/nonexistent/calibre2rust-view-state.json"));
+        let state = ViewState::load(Path::new("/nonexistent/calibre4rust-view-state.json"));
         assert_eq!(state.left_panel_width, ViewState::default().left_panel_width);
     }
 
     #[test]
     fn malformed_file_yields_default_state() {
-        let dir = std::env::temp_dir().join(format!("calibre2rust-vs-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("calibre4rust-vs-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("state.json");
         std::fs::write(&path, "{ not json").expect("write");
@@ -1223,7 +1223,7 @@ mod tests {
 
     #[test]
     fn round_trips_through_json() {
-        let dir = std::env::temp_dir().join(format!("calibre2rust-vs-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("calibre4rust-vs-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("state.json");
         let mut state = ViewState::default();
@@ -1270,7 +1270,7 @@ mod tests {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin view_state::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin view_state::`
 Expected: 编译错误。
 
 - [ ] **Step 3: 实现 `view_state.rs`**
@@ -1287,7 +1287,7 @@ Expected: 编译错误。
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `cargo test -p calibre2rust_gui --target aarch64-apple-darwin view_state::`
+Run: `cargo test -p calibre4rust_gui --target aarch64-apple-darwin view_state::`
 Expected: 6 passed
 
 - [ ] **Step 5: 接到窗口与书列表**
@@ -1299,7 +1299,7 @@ Expected: 6 passed
 
 - [ ] **Step 6: 编译并肉眼验证**
 
-Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre2rust`
+Run: `cargo build --target aarch64-apple-darwin` && `./target/aarch64-apple-darwin/debug/calibre4rust`
 Expected: 拖动面板宽度 → 退出 → 重开,宽度保持;把窗口缩到很小再放大,书列表仍可见(未被面板挤没)。
 
 - [ ] **Step 7: 提交**

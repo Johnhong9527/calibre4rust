@@ -1,4 +1,4 @@
-# calibre2Rust 设计文档 —— caliberate 的 GPUI 前端
+# calibre4rust 设计文档 —— caliberate 的 GPUI 前端
 
 > 日期:2026-10-21(第 2 版,方向已修正)
 > 状态:**待批准**
@@ -6,7 +6,7 @@
 > 后端复用:`../caliberate`(`github.com/sguzman/caliberate`,commit `f9c41d7`)
 > UI 框架来源:`../zed`(`github.com/zed-industries/zed`,`92447a17cc008225c73619f1c3f0cdefc8ababf3`)
 
-> **第 1 版为什么被推翻**:第 1 版打算在 `calibre2Rust/` 里从零实现 db / 搜索语言 / 导入器 / 格式层(约 3 万行)。复核 `caliberate` 后发现该仓库已提供 47,687 行、14 个 crate 的成熟实现,其中 `crates/library/src/catalog.rs` 的 `LibraryCatalog` service、`crates/library/src/calibre/` 的 calibre 库只读兼容层、`crates/db` 的 SQLite 持久化**正是第 1 版要造的东西**。caliberate 的 `docs/project/priorities.md` 明确把"in-process Rust API for other Rust projects"列为 P0 adapter target —— 一个 GPUI 前端正落在它声明的架构位置上。重复造轮子既违背 caliberate 的架构边界,也没有工程收益。**本版改为:calibre2Rust 只写 GPUI 前端,后端全部复用 caliberate。**
+> **第 1 版为什么被推翻**:第 1 版打算在 `calibre4rust/` 里从零实现 db / 搜索语言 / 导入器 / 格式层(约 3 万行)。复核 `caliberate` 后发现该仓库已提供 47,687 行、14 个 crate 的成熟实现,其中 `crates/library/src/catalog.rs` 的 `LibraryCatalog` service、`crates/library/src/calibre/` 的 calibre 库只读兼容层、`crates/db` 的 SQLite 持久化**正是第 1 版要造的东西**。caliberate 的 `docs/project/priorities.md` 明确把"in-process Rust API for other Rust projects"列为 P0 adapter target —— 一个 GPUI 前端正落在它声明的架构位置上。重复造轮子既违背 caliberate 的架构边界,也没有工程收益。**本版改为:calibre4rust 只写 GPUI 前端,后端全部复用 caliberate。**
 
 ---
 
@@ -109,9 +109,9 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  calibre2Rust (本仓库)                                    │
+│  calibre4rust (本仓库)                                    │
 │                                                          │
-│   crates/calibre2rust-gui   ← 唯一新写的 crate            │
+│   crates/calibre4rust-gui   ← 唯一新写的 crate            │
 │     ├── GPUI 呈现层                                       │
 │     ├── 交互状态(选中/排序/过滤/面板尺寸)                │
 │     └── 只调用 service API,不含 SQL、不含业务规则         │
@@ -136,7 +136,7 @@
 **只写一个 crate。** 理由:前端代码量预计 5,000–8,000 行(对比 caliberate 的 egui 前端 16,876 行),拆多 crate 只会增加 ceremony。
 
 ```
-calibre2Rust/
+calibre4rust/
 ├── Cargo.toml                      # workspace 根 + [patch.crates-io] async-task
 ├── rust-toolchain.toml             # channel = "1.98.1"
 ├── .cargo/config.toml              # MACOSX_DEPLOYMENT_TARGET
@@ -146,11 +146,11 @@ calibre2Rust/
 │   ├── NOTICE                      # 图标来源与许可
 │   └── icons/*.svg                 # 从 ../calibre/imgsrc/ 复制
 ├── crates/
-│   └── calibre2rust-gui/
+│   └── calibre4rust-gui/
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs              # 库根
-│           ├── main.rs             # 二进制 calibre2rust
+│           ├── main.rs             # 二进制 calibre4rust
 │           ├── app.rs              # 启动 + 全局状态 AppState
 │           ├── service.rs          # caliberate service 适配层(唯一接触后端的地方)
 │           ├── theme_provider.rs   # 自实现 ThemeSettingsProvider
@@ -174,14 +174,14 @@ calibre2Rust/
 ### 4.3 依赖图
 
 ```
-calibre2rust-gui
+calibre4rust-gui
    ├── caliberate-core / db / library / assets / metadata / conversion   (git)
    ├── gpui / gpui_platform / gpui_macros / gpui_util                    (git)
    ├── ui / theme / icons / menu / fuzzy / component                     (git)
    └── serde / serde_json / anyhow / tracing / uuid / image
 ```
 
-无环。`calibre2rust-gui` 是叶子节点,不依赖任何本地 crate。
+无环。`calibre4rust-gui` 是叶子节点,不依赖任何本地 crate。
 
 ### 4.4 service API 契约(前端唯一的后端入口)
 
@@ -427,7 +427,7 @@ calibre 的阅读器用 Qt WebEngine(完整 CSS)。GPUI 无 WebView。
 
 1. 装 `1.98.1` 工具链(走 USTC 镜像)。
 2. 建 workspace + 根 `Cargo.toml`(§D1 的 patch + `runtime_shaders`)+ `rust-toolchain.toml` + `.cargo/config.toml` + `LICENSE`。
-3. `crates/calibre2rust-gui` 骨架:`main.rs` 调 `gpui_platform::application()`,`theme::init`,自实现 `ThemeSettingsProvider` 与 `AssetSource`,窗口显示中文 + 一个按钮。
+3. `crates/calibre4rust-gui` 骨架:`main.rs` 调 `gpui_platform::application()`,`theme::init`,自实现 `ThemeSettingsProvider` 与 `AssetSource`,窗口显示中文 + 一个按钮。
 4. **service 打通**:`service.rs` 用 `caliberate_app::bootstrap::init(&config)` 拿配置 → `Database::open_with_fts(&config.db, &config.fts)` → `LibraryCatalog::new(&db)` → 列出书数显示在窗口标题上。
 5. 复制 calibre 图标进 `assets/icons/`,写 `assets/NOTICE`。
 
@@ -502,7 +502,7 @@ calibre 的阅读器用 Qt WebEngine(完整 CSS)。GPUI 无 WebView。
 **验证结果**:`cd ../caliberate && cargo check --workspace --all-targets` 在 macOS(aarch64-apple-darwin,Rust 1.92)上**零错误通过**,耗时 1m39s。
 - 全部 14 个 crate(含 `device`、`metadata`、`unrar`、`eframe`/`egui`)在 macOS 上均可编译。
 - 警告仅来自既有的 `caliberate-gui`(57 条 dead_code)与 `caliberate-library`(1 条),与本项目无关,按 caliberate 的 AGENTS.md 规定**不转为本项目的修复范围**。
-- 结论:**本项目的 `calibre2rust-gui` 可以依赖 caliberate 的全部 crate,无需排除任何模块。**
+- 结论:**本项目的 `calibre4rust-gui` 可以依赖 caliberate 的全部 crate,无需排除任何模块。**
 
 **网络提示**:crates.io 索引直连极慢(实测 10 分钟仍卡在 "Updating crates.io index")。用 rsproxy 镜像后同一命令 1m39s 完成:
 ```bash
@@ -560,8 +560,8 @@ cargo fmt --check
 2. **是否最终并回 caliberate 仓库**(作为 `crates/gui-gpui`)
    本项目先独立;等 GPUI 前端稳定后再议。需要架构师决定。
 3. **项目命名不一致(需统一)**
-   目录名是 `calibre2Rust/`(会话开始前由用户创建),而用户在会话中建的 `README.md` 标题写的是 `# calibre4rust`。本设计文档与实施计划目前统一采用 **`calibre2rust`**(二进制名 `calibre2rust`,crate 名 `calibre2rust_gui`)。
-   请确认最终用哪个;若定 `calibre4rust`,需要同步改:目录名、二进制名、crate 名、`calibre2Rust` 目录下的文档路径。
+   目录名是 `calibre4rust/`(会话开始前由用户创建),而用户在会话中建的 `README.md` 标题写的是 `# calibre4rust`。本设计文档与实施计划目前统一采用 **`calibre4rust`**(二进制名 `calibre4rust`,crate 名 `calibre4rust_gui`)。
+   请确认最终用哪个;若定 `calibre4rust`,需要同步改:目录名、二进制名、crate 名、`calibre4rust` 目录下的文档路径。
    **注意**:目录已被 git 初始化并有 3 次提交,改目录名要一并处理 git remote 与文档内路径引用。
 
 4. **是否要求 GUI 与 caliberate 的 egui 前端功能对等**

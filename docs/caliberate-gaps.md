@@ -31,8 +31,13 @@
 - 多级排序的 tie-breaker 需要 caliberate 支持 —— 依赖缺口 #3。
 - 封面取法待确认 —— 依赖缺口 #6。
 
-## 本前端侧的自建缺口(Phase A/B/C 遗留)
+## caliberate 自身的既有缺陷(在子模块里发现,尚未修)
 
+| # | 缺陷 | 证据 | 状态 |
+|---|---|---|---|
+| C1 | **上游已有 2 个失败测试**(非本前端引入):`caliberate-server` 的 `opds_download_returns_file` 与 `attached_opds_uses_only_attached_source_and_downloads_native_content` | 上游 commit `f9c41d7` 原样 checkout、`cargo test --workspace` 在 macOS 上即失败。断言 `entry_body.contains("/opds/books/{id}/download\"")` 与 `opds_base()`(`crates/server/src/opds.rs:656`)生成的 href 不匹配 | 待修(子模块内) |
+
+## 本前端侧的自建缺口(Phase A/B/C 遗留)
 | # | 缺口 | 影响 | 计划 |
 |---|---|---|---|
 | F1 | 未接 control-plane TOML(`ControlPlane`) | 配置只能靠 `CALIBRE4RUST_LIBRARY` 环境变量与默认值 | Phase I |

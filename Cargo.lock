@@ -707,7 +707,6 @@ dependencies = [
 [[package]]
 name = "caliberate-assets"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "caliberate-core",
  "hex",
@@ -720,7 +719,6 @@ dependencies = [
 [[package]]
 name = "caliberate-core"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "serde",
  "time",
@@ -733,7 +731,6 @@ dependencies = [
 [[package]]
 name = "caliberate-db"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "caliberate-core",
  "rusqlite",
@@ -745,7 +742,6 @@ dependencies = [
 [[package]]
 name = "caliberate-library"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "caliberate-assets",
  "caliberate-core",
@@ -759,7 +755,6 @@ dependencies = [
 [[package]]
 name = "caliberate-metadata"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "caliberate-core",
  "caliberate-zpaq",
@@ -776,7 +771,6 @@ dependencies = [
 [[package]]
 name = "caliberate-zpaq"
 version = "0.1.0"
-source = "git+https://github.com/sguzman/caliberate?rev=f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb#f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"
 dependencies = [
  "caliberate-core",
  "tracing",

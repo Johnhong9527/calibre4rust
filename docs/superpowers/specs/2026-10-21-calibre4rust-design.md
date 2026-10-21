@@ -3,7 +3,7 @@
 > 日期:2026-10-21(第 2 版,方向已修正)
 > 状态:**待批准**
 > 上游参考(行为基准):`../calibre`(calibre Python 源码树,`src/calibre/`,9.16.100 / commit `43b5c26`)
-> 后端复用:`../caliberate`(`github.com/sguzman/caliberate`,commit `f9c41d7`)
+> 后端复用:本仓库子模块 `caliberate/`(`github.com/Johnhong9527/caliberate`,commit `f9c41d7`)
 > UI 框架来源:`../zed`(`github.com/zed-industries/zed`,`92447a17cc008225c73619f1c3f0cdefc8ababf3`)
 
 > **第 1 版为什么被推翻**:第 1 版打算在 `calibre4rust/` 里从零实现 db / 搜索语言 / 导入器 / 格式层(约 3 万行)。复核 `caliberate` 后发现该仓库已提供 47,687 行、14 个 crate 的成熟实现,其中 `crates/library/src/catalog.rs` 的 `LibraryCatalog` service、`crates/library/src/calibre/` 的 calibre 库只读兼容层、`crates/db` 的 SQLite 持久化**正是第 1 版要造的东西**。caliberate 的 `docs/project/priorities.md` 明确把"in-process Rust API for other Rust projects"列为 P0 adapter target —— 一个 GPUI 前端正落在它声明的架构位置上。重复造轮子既违背 caliberate 的架构边界,也没有工程收益。**本版改为:calibre4rust 只写 GPUI 前端,后端全部复用 caliberate。**
@@ -70,7 +70,9 @@
 | macOS 构建 | 需完整 Xcode(已安装)。`cmake` 本机缺失,当前不依赖 |
 | `MACOSX_DEPLOYMENT_TARGET` | zed 设 `10.15.7`;`gpui_apple/build.rs:137` 的 `-mmacosx-version-min` 是传给 `xcrun metal` 的,与 rustc 侧独立,照抄 zed 的 `.cargo/config.toml` `[env]` 块即可 |
 | Cargo patch 继承 | **`[patch.crates-io]` 只在消费方 workspace 根生效**。zed 用了 `async-task` 的 fork(API 泛型化为 `Task<T, M>` / `Runnable<M>`),**必须在本项目根 Cargo.toml 重复声明**该 patch,否则 `gpui` 编译失败 |
-| caliberate 兼容性 | caliberate 根 `Cargo.toml` **无 `[patch.crates-io]`**,无 `workspace.package` 继承 → 作为 git 依赖消费时无需额外 patch。其 crate 也未设 `publish = false`,git 依赖直接可用 |
+| caliberate 兼容性 | caliberate 根 `Cargo.toml` **无 `[patch.crates-io]`**,无 `workspace.package` 继承 → 作为依赖消费时无需额外 patch。它现以 **git 子模块**形式收在本仓库内(`caliberate/`),用 path 依赖引用,子模块指针锁定 commit |
+| caliberate 子模块 | 指向 `github.com/Johnhong9527/caliberate`(上游 `sguzman/caliberate` 的 fork —— 我们对上游只有读权限,推不上去)。后端能力缺口可在子模块内补齐,改动推到 fork 后更新子模块指针 |
+| workspace 隔离 | 本仓库 `Cargo.toml` 必须 `exclude = ["caliberate"]` —— 否则 cargo 会把工作目录内的路径依赖自动并入成员,本仓库的 `rustfmt.toml` 会去改写 caliberate 的代码 |
 | caliberate 平台 | caliberate 官方保证 Windows/Linux,macOS 需自行验证(见 §7.3) |
 | 网络 | crates.io 下载不稳定;`cargo metadata` 会解析所有 target 并拖入 windows/linux/wasm 依赖(本机实测 >15 分钟未完成)→ **用 `cargo build --target aarch64-apple-darwin` 与 `cargo fetch --target aarch64-apple-darwin`** |
 | 许可 | caliberate 是 GPL-3.0-or-later;calibre 是 GPLv3;zed 的 `ui`/`theme`/`icons` 是 GPL-3.0-or-later。**整仓 GPL-3.0-or-later** |
@@ -95,7 +97,7 @@
 ### 3.3 依赖策略
 
 - **GPUI 侧**(全部 git 依赖,固定 rev `92447a17`):`gpui`、`gpui_platform`、`gpui_macros`、`gpui_util`、`ui`、`theme`、`icons`、`menu`、`fuzzy`、`component`。
-- **caliberate 侧**(git 依赖,固定 rev `f9c41d7`):`caliberate-core`、`caliberate-db`、`caliberate-library`、`caliberate-assets`、`caliberate-metadata`、`caliberate-conversion`。
+- **caliberate 侧**(**git 子模块** `caliberate/`,path 依赖):`caliberate-core`、`caliberate-db`、`caliberate-library`。
   - **不引入** `caliberate-gui`(egui 前端)—— 那是本项目的平行实现,不是依赖。
   - **不引入** `caliberate-app` 的二进制部分;但**可以**用 `caliberate_app::bootstrap::init()` 复用配置加载与运行时目录初始化(它是 `pub` 的)。
 - **不引入**:`editor`、`search`、`picker`、`fs`、`assets`、`ui_input`(zed 侧,依赖过重)。
@@ -282,15 +284,17 @@ async-task = { git = "https://github.com/zed-industries/async-task.git", rev = "
 
 ### D2. 依赖 caliberate 的方式
 
-**决策**:git 依赖,`git = "https://github.com/sguzman/caliberate"`,`rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb"`(本地 `../caliberate` 的 HEAD,与 `origin/main` 一致)。
+**决策**:**git 子模块**(`caliberate/`,指向 `github.com/Johnhong9527/caliberate`),用 **path 依赖**引用;本仓库 workspace `exclude = ["caliberate"]`。
 
 **理由**:
-1. 用户已拍板"复用 caliberate 后端"。
-2. 固定 rev 使构建可复现,不依赖兄弟目录的状态;将来 `../caliberate` 前进不会突然改变本项目行为。
-3. caliberate 无 `[patch.crates-io]`、无 `workspace.package` 继承 → 作为 git 依赖消费**不需要**额外 patch 或版本冲突处理。
-4. caliberate 内部 crate 之间的 `path` 依赖在 git checkout 内自动解析(与 zed 同理)。
+1. 用户已拍板"复用 caliberate 后端";把 caliberate 收进本仓库子模块,是为了**后端能力缺口能在这个仓库里一并补齐**(见 §9.2),而不是永远只在前端绕。
+2. 我们对上游 `sguzman/caliberate` **只有读权限**(`gh api repos/sguzman/caliberate` → `push: false`),所以子模块必须指向自己的 fork;fork 已镜像全部 43 个分支。
+3. 子模块指针锁定 commit,构建仍然可复现 —— 与 git 依赖的 rev 固定等价。
+4. `exclude = ["caliberate"]` 是必需的:cargo 会把工作目录内的路径依赖**自动并入 workspace 成员**,导致本仓库的 `rustfmt.toml` 去改写 caliberate 的代码(实测 2 处 diff)。exclude 后两个 workspace 各自保持约定,caliberate 的测试用 `cargo test --manifest-path caliberate/Cargo.toml --workspace` 跑。
 
-**代价**:caliberate 后端改动需先 push 才能被本项目看到。**开发期对策**:需要联调 caliberate 时,临时把 git 依赖换成 `path = "../caliberate/crates/db"` 之类;**提交前必须换回 git 依赖**,以免提交一个只能在本地编译的 manifest。
+**代价**:
+- 改 caliberate 要走两步:先推到 fork,再更新本仓库的子模块指针。
+- caliberate 自己的分支/报告/commit 约定与本仓库不同,要在子模块里按它的规矩来。
 
 **验证状态**:待做(Phase A 第一项)。
 
@@ -615,7 +619,7 @@ cargo fmt --check
 | 格式插件 | `src/calibre/ebooks/conversion/plugins/` |
 | EPUB2→3 升级 | `src/calibre/ebooks/oeb/polish/upgrade.py` |
 
-**caliberate(后端)** —— 相对 `../caliberate`:
+**caliberate(后端)** —— 相对 `caliberate/`(本仓库子模块):
 
 | 主题 | 位置 |
 |---|---|

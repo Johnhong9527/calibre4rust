@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["crates/calibre4rust-gui"]
+# caliberate 是子模块,保留它自己的 workspace、rustfmt 与 clippy 约定。
+# 不 exclude 的话,cargo 会把工作目录内的路径依赖自动并入成员,
+# 导致本仓库的 rustfmt.toml 去改写 caliberate 的代码。
+exclude = ["caliberate"]
 
 [workspace.package]
 version = "0.1.0"
@@ -23,9 +27,12 @@ component      = { git = "https://github.com/zed-industries/zed", rev = "92447a1
 # caliberate 的三个 crate 都在同一个 git 仓库里。cargo 对 git 依赖不允许同时写
 # `git` 与 `path`("ambiguous"),不写 path 时 cargo 会在 checkout 的 workspace
 # members 中按包名查找。
-caliberate-core       = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
-caliberate-db         = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
-caliberate-library    = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
+# caliberate 作为本仓库的 git 子模块维护(见 .gitmodules),
+# 因此用 path 依赖;子模块指针锁定了具体 commit,构建仍然可复现。
+# 首次 clone 需要:git submodule update --init --recursive
+caliberate-core       = { path = "caliberate/crates/core" }
+caliberate-db         = { path = "caliberate/crates/db" }
+caliberate-library    = { path = "caliberate/crates/library" }
 
 anyhow    = "1"
 rusqlite  = { version = "0.39", features = ["bundled"] }

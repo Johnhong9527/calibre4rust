@@ -35,6 +35,9 @@ Phase A/B/C **已完成**(验收记录见 `docs/superpowers/specs/2026-10-21-pha
 ## 构建
 
 ```bash
+# 首次 clone 需要拉取子模块(caliberate 后端)
+git submodule update --init --recursive
+
 # 工具链(1.98.1,直连 rust-lang.org 会超时,须走镜像)
 RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static rustup toolchain install 1.98.1
 
@@ -51,16 +54,22 @@ cargo test  --target aarch64-apple-darwin
 
 **不要用 `cargo metadata`** —— 它会解析所有 target 的依赖。
 
+**caliberate 子模块单独验证**(它有自己的 workspace 与约定):
+```bash
+cargo test --manifest-path caliberate/Cargo.toml --workspace
+```
+
 ---
 
 ## 依赖的上游
 
-| 仓库 | 用途 |
-|---|---|
-| [zed-industries/zed](https://github.com/zed-industries/zed) @ `92447a17` | GPUI(`gpui` / `gpui_platform` / `ui` / `theme` / `icons` / `menu` / `fuzzy` / `component`) |
-| [sguzman/caliberate](https://github.com/sguzman/caliberate) @ `f9c41d7` | 后端(`caliberate-core` / `caliberate-db` / `caliberate-library`) |
+| 仓库 | 形式 | 用途 |
+|---|---|---|
+| [zed-industries/zed](https://github.com/zed-industries/zed) @ `92447a17` | git 依赖 | GPUI(`gpui` / `gpui_platform` / `ui` / `theme` / `icons` / `menu` / `fuzzy` / `component`) |
+| [sguzman/caliberate](https://github.com/sguzman/caliberate) @ `f9c41d7` | **git 子模块**(`caliberate/`) | 后端(`caliberate-core` / `caliberate-db` / `caliberate-library`) |
 
-两者均为 git 依赖 + 固定 rev,不依赖本地检出状态。
+子模块指向我们自己的 fork `Johnhong9527/caliberate`(对上游只有读权限),因此后端能力缺口可以在本仓库内一并补齐。
+zed 侧的 rev 固定,caliberate 侧由子模块指针锁定 commit,两者都保证构建可复现。
 
 ---
 

@@ -1,10 +1,12 @@
 use gpui::prelude::*;
 use gpui::{App, Entity, Menu, MenuItem, MouseButton};
+use std::path::PathBuf;
 use ui::prelude::*;
 
 use crate::actions;
 use crate::book_list::BookList;
 use crate::service::LibraryService;
+use crate::view_state::ViewState;
 
 /// calibre 的 macOS 默认工具栏动作。
 ///
@@ -69,13 +71,8 @@ struct ResizeDrag {
 pub struct MainWindow {
     service: Option<Entity<LibraryService>>,
     book_list: Entity<BookList>,
-    layout: PanelLayout,
-    tag_browser_visible: bool,
-    book_details_visible: bool,
-    cover_browser_visible: bool,
-    quick_view_visible: bool,
-    left_panel_width: f32,
-    right_panel_width: f32,
+    view_state: ViewState,
+    state_path: PathBuf,
     left_resize: Option<ResizeDrag>,
     right_resize: Option<ResizeDrag>,
     status_message: String,
@@ -86,8 +83,11 @@ impl MainWindow {
     pub fn new(
         service: Option<Entity<LibraryService>>,
         service_error: Option<String>,
+        state_path: PathBuf,
         cx: &mut App,
     ) -> Entity<Self> {
+        let view_state = ViewState::load(&state_path);
+
         let status_message = match service.as_ref() {
             Some(service) => match service.read(cx).book_count() {
                 Ok(count) => format!("{count} 本书"),
@@ -100,17 +100,19 @@ impl MainWindow {
         };
 
         let book_list = BookList::new(service.clone(), cx);
+        book_list.update(cx, |list, cx| {
+            list.apply_sort(
+                &view_state.selected_sort_column,
+                view_state.sort_descending,
+                cx,
+            );
+        });
 
         let window = cx.new(|_cx| Self {
             service,
             book_list,
-            layout: PanelLayout::Wide,
-            tag_browser_visible: true,
-            book_details_visible: true,
-            cover_browser_visible: false,
-            quick_view_visible: false,
-            left_panel_width: 280.0,
-            right_panel_width: 360.0,
+            view_state,
+            state_path,
             left_resize: None,
             right_resize: None,
             status_message,
@@ -121,9 +123,10 @@ impl MainWindow {
             let window = window.clone();
             move |_: &actions::ToggleLayout, cx| {
                 window.update(cx, |this, _cx| {
-                    this.layout = match this.layout {
-                        PanelLayout::Wide => PanelLayout::Narrow,
-                        PanelLayout::Narrow => PanelLayout::Wide,
+                    this.view_state.layout = if this.view_state.is_narrow_layout() {
+                        "wide".to_string()
+                    } else {
+                        "narrow".to_string()
                     };
                 });
             }
@@ -132,7 +135,7 @@ impl MainWindow {
             let window = window.clone();
             move |_: &actions::ToggleBookDetails, cx| {
                 window.update(cx, |this, _cx| {
-                    this.book_details_visible = !this.book_details_visible;
+                    this.view_state.book_details_visible = !this.view_state.book_details_visible;
                 });
             }
         });
@@ -140,7 +143,7 @@ impl MainWindow {
             let window = window.clone();
             move |_: &actions::ToggleTagBrowser, cx| {
                 window.update(cx, |this, _cx| {
-                    this.tag_browser_visible = !this.tag_browser_visible;
+                    this.view_state.tag_browser_visible = !this.view_state.tag_browser_visible;
                 });
             }
         });
@@ -148,7 +151,7 @@ impl MainWindow {
             let window = window.clone();
             move |_: &actions::ToggleCoverGrid, cx| {
                 window.update(cx, |this, _cx| {
-                    this.cover_browser_visible = !this.cover_browser_visible;
+                    this.view_state.cover_browser_visible = !this.view_state.cover_browser_visible;
                 });
             }
         });
@@ -157,7 +160,11 @@ impl MainWindow {
     }
 
     pub fn layout(&self) -> PanelLayout {
-        self.layout
+        if self.view_state.is_narrow_layout() {
+            PanelLayout::Narrow
+        } else {
+            PanelLayout::Wide
+        }
     }
 
     /// 书库服务。书库不可用时为 `None`。
@@ -194,11 +201,13 @@ impl MainWindow {
 impl Render for MainWindow {
     fn render(
         &mut self,
-        _window: &mut gpui::Window,
+        window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
         let status = self.status_message.clone();
         let service_error = self.service_error.clone();
+
+        self.sync_view_state(window, cx);
 
         div()
             .flex_col()
@@ -219,6 +228,26 @@ impl Render for MainWindow {
                         this.child(div().text_color(gpui::rgba(0xE5484D)).child(error))
                     }),
             )
+    }
+}
+
+impl MainWindow {
+    /// 把书列表的排序同步回状态,并按当前窗口尺寸收敛几何;有变化就落盘。
+    fn sync_view_state(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        let viewport = window.viewport_size();
+        let (sort_column, sort_descending) = self.book_list.read(cx).sort_state();
+
+        let mut state = self.view_state.clone();
+        state.clamp_to_window(f32::from(viewport.width), f32::from(viewport.height));
+        state.selected_sort_column = sort_column;
+        state.sort_descending = sort_descending;
+
+        if state != self.view_state {
+            self.view_state = state.clone();
+            if let Err(error) = state.save(&self.state_path) {
+                tracing::error!(%error, "保存视图状态失败");
+            }
+        }
     }
 }
 
@@ -256,16 +285,16 @@ impl MainWindow {
     }
 
     fn render_central_panels(&mut self, cx: &mut gpui::Context<Self>) -> impl IntoElement {
-        let narrow = self.layout == PanelLayout::Narrow;
+        let narrow = self.view_state.is_narrow_layout();
         let left_width = if narrow {
-            self.left_panel_width * 0.25
+            self.view_state.left_panel_width * 0.25
         } else {
-            self.left_panel_width
+            self.view_state.left_panel_width
         };
         let right_width = if narrow {
-            self.right_panel_width * 0.35
+            self.view_state.right_panel_width * 0.35
         } else {
-            self.right_panel_width
+            self.view_state.right_panel_width
         };
 
         div()
@@ -290,7 +319,7 @@ impl MainWindow {
     }
 
     fn render_tag_browser(&self, width: f32) -> impl IntoElement {
-        if !self.tag_browser_visible {
+        if !self.view_state.tag_browser_visible {
             return div().w_0().child("分类浏览器");
         }
         div()
@@ -307,7 +336,7 @@ impl MainWindow {
     }
 
     fn render_book_details(&self, width: f32) -> impl IntoElement {
-        if !self.book_details_visible {
+        if !self.view_state.book_details_visible {
             return div().w_0().child("书籍详情");
         }
         div()
@@ -320,14 +349,14 @@ impl MainWindow {
     }
 
     fn render_cover_browser(&self) -> impl IntoElement {
-        if !self.cover_browser_visible {
+        if !self.view_state.cover_browser_visible {
             return div().h_0();
         }
         div().h(px(160.0)).border_b_1().p_2().child("封面浏览器")
     }
 
     fn render_quick_view(&self) -> impl IntoElement {
-        if !self.quick_view_visible {
+        if !self.view_state.quick_view_visible {
             return div().h_0();
         }
         div().h(px(120.0)).border_t_1().p_2().child("快速预览")
@@ -354,7 +383,7 @@ impl MainWindow {
             .on_mouse_down(MouseButton::Left, move |event, _window, cx| {
                 window_for_down.update(cx, |this, _cx| {
                     this.left_resize = Some(ResizeDrag {
-                        start_width: this.left_panel_width,
+                        start_width: this.view_state.left_panel_width,
                         start_x: f32::from(event.position.x),
                     });
                 });
@@ -366,11 +395,11 @@ impl MainWindow {
                     };
                     let width =
                         (drag.start_width + (f32::from(event.position.x) - drag.start_x)).max(0.0);
-                    this.left_panel_width = width;
+                    this.view_state.left_panel_width = width;
                     if width < PANEL_HIDE_THRESHOLD {
-                        this.tag_browser_visible = false;
+                        this.view_state.tag_browser_visible = false;
                     } else if width > PANEL_SHOW_THRESHOLD {
-                        this.tag_browser_visible = true;
+                        this.view_state.tag_browser_visible = true;
                     }
                 });
             })
@@ -392,7 +421,7 @@ impl MainWindow {
             .on_mouse_down(MouseButton::Left, move |event, _window, cx| {
                 window_for_down.update(cx, |this, _cx| {
                     this.right_resize = Some(ResizeDrag {
-                        start_width: this.right_panel_width,
+                        start_width: this.view_state.right_panel_width,
                         start_x: f32::from(event.position.x),
                     });
                 });
@@ -404,11 +433,11 @@ impl MainWindow {
                     };
                     let width =
                         (drag.start_width - (f32::from(event.position.x) - drag.start_x)).max(0.0);
-                    this.right_panel_width = width;
+                    this.view_state.right_panel_width = width;
                     if width < PANEL_HIDE_THRESHOLD {
-                        this.book_details_visible = false;
+                        this.view_state.book_details_visible = false;
                     } else if width > PANEL_SHOW_THRESHOLD {
-                        this.book_details_visible = true;
+                        this.view_state.book_details_visible = true;
                     }
                 });
             })

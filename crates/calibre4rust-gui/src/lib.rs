@@ -5,6 +5,7 @@ pub mod book_list;
 pub mod cli;
 pub mod service;
 pub mod theme_provider;
+pub mod view_state;
 pub mod window;
 
 #[cfg(test)]

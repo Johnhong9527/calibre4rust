@@ -9,6 +9,7 @@ use crate::actions;
 use crate::assets::CalibreAssets;
 use crate::service::LibraryService;
 use crate::theme_provider::CalibreThemeSettings;
+use crate::view_state::ViewState;
 use crate::window::MainWindow;
 
 /// 默认书库位置。macOS 遵循惯例放在 `~/Library/Application Support/` 下。
@@ -51,7 +52,8 @@ pub fn run() -> anyhow::Result<()> {
                 },
                 |_, cx| {
                     let (service, error) = open_library(cx);
-                    MainWindow::new(service, error, cx)
+                    let state_path = ViewState::state_path(&default_library_path());
+                    MainWindow::new(service, error, state_path, cx)
                 },
             ) {
                 Ok(_) => cx.activate(true),

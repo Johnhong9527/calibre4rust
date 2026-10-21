@@ -209,6 +209,33 @@ impl BookList {
     pub fn columns(&self) -> Vec<BookColumn> {
         self.columns.clone()
     }
+
+    /// 当前排序状态,用于持久化。返回列标识与是否降序。
+    pub fn sort_state(&self) -> (String, bool) {
+        (
+            column_label(self.sort_column).to_string(),
+            self.sort_descending,
+        )
+    }
+
+    /// 从持久化状态恢复排序。
+    pub fn apply_sort(
+        &mut self,
+        column_name: &str,
+        descending: bool,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        if let Some(column) = self
+            .columns
+            .iter()
+            .copied()
+            .find(|column| column_label(*column) == column_name)
+        {
+            self.sort_column = column;
+            self.sort_descending = descending;
+        }
+        self.refresh(cx);
+    }
 }
 
 impl Render for BookList {

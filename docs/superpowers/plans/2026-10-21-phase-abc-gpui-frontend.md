@@ -564,6 +564,34 @@ mod tests {
         assert_eq!(service.book_count().expect("count"), 0);
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[test]
+    fn opening_a_corrupt_database_is_an_error_not_a_panic() {
+        let dir = std::env::temp_dir().join(format!("calibre2rust-svc-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        // 写一个不是 SQLite 的文件当数据库
+        std::fs::write(dir.join("calibre.db"), b"this is not a sqlite database").expect("write");
+        let config = test_control_plane(&dir);
+        let result = std::panic::catch_unwind(|| LibraryService::open(&config));
+        assert!(result.is_ok(), "打开损坏库不应 panic");
+        assert!(result.expect("no panic").is_err(), "打开损坏库应返回 Err");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_failing_database_opens_yields_a_readable_message() {
+        // service.rs 的错误信息必须包含"书库"二字,便于 UI 直接展示给用户
+        let dir = std::env::temp_dir().join(format!("calibre2rust-svc-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("calibre.db"), b"not a database").expect("write");
+        let config = test_control_plane(&dir);
+        let message = match LibraryService::open(&config) {
+            Ok(_) => panic!("应当失败"),
+            Err(error) => format!("{error:#}"),
+        };
+        assert!(message.contains("书库"), "错误信息应提到书库: {message}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
 ```
 
@@ -877,6 +905,8 @@ git commit -m "feat(app): 主窗口骨架,工具栏/菜单栏/搜索栏/五面�
   - `calibre2rust_gui::book_list::default_visible_columns() -> Vec<BookColumn>`
   - `calibre2rust_gui::book_list::column_label(column: BookColumn) -> &'static str`
   - `calibre2rust_gui::book_list::sort_field_for(column: BookColumn) -> Option<LibrarySortField>`
+  - `calibre2rust_gui::book_list::format_row_cell(column: BookColumn, summary: &LibraryBookSummary) -> String`
+  - `calibre2rust_gui::book_list::chunk_offsets(total: usize, chunk_size: usize) -> Vec<usize>`
   - `calibre2rust_gui::book_list::load_all_summaries(service: &LibraryService, query: &LibraryQuery) -> anyhow::Result<Vec<LibraryBookSummary>>`
 
 ```rust
@@ -923,8 +953,53 @@ mod tests {
         assert_eq!(column_label(BookColumn::Title), "title");
         assert_eq!(column_label(BookColumn::DateAdded), "date_added");
     }
+
+    #[test]
+    fn row_cells_render_cjk_emoji_and_long_titles() {
+        // 非 ASCII / emoji / 超长标题必须原样渲染,不 panic、不截断成乱码
+        let summary = sample_summary("《三体》🚀 —— 一个非常非常长的书名用来测试超长情况");
+        let cell = format_row_cell(BookColumn::Title, &summary);
+        assert_eq!(cell, "《三体》🚀 —— 一个非常非常长的书名用来测试超长情况");
+    }
+
+    #[test]
+    fn author_cell_joins_with_comma() {
+        let summary = sample_summary_with_authors(vec!["刘慈欣".to_string(), "王晋康".to_string()]);
+        assert_eq!(format_row_cell(BookColumn::Authors, &summary), "刘慈欣, 王晋康");
+    }
+
+    #[test]
+    fn rating_cell_divides_by_two() {
+        // calibre 内部评分 0–10 = 2×星
+        let mut summary = sample_summary("X");
+        summary.rating = Some(8);
+        assert_eq!(format_row_cell(BookColumn::Rating, &summary), "4");
+    }
+
+    #[test]
+    fn chunk_offsets_cover_the_whole_result_set() {
+        // 10 万本、分块 2000 → 50 次取数,偏移量必须连续覆盖
+        let offsets = chunk_offsets(100_000, 2_000);
+        assert_eq!(offsets.len(), 50);
+        assert_eq!(offsets[0], 0);
+        assert_eq!(*offsets.last().expect("non-empty"), 98_000);
+        // 相邻偏移量差值等于块大小
+        for pair in offsets.windows(2) {
+            assert_eq!(pair[1] - pair[0], 2_000);
+        }
+    }
+
+    #[test]
+    fn chunk_offsets_handle_small_and_empty_result_sets() {
+        assert_eq!(chunk_offsets(0, 2_000), Vec::<usize>::new());
+        assert_eq!(chunk_offsets(10, 2_000), vec![0]);
+        assert_eq!(chunk_offsets(2_000, 2_000), vec![0]);
+        assert_eq!(chunk_offsets(2_001, 2_000), vec![0, 2_000]);
+    }
 }
 ```
+
+测试辅助 `sample_summary(title)` / `sample_summary_with_authors(authors)`:构造一个 `LibraryBookSummary` 字面量(字段以 `crates/library/src/summary.rs:8` 为准)。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -976,30 +1051,67 @@ pub fn sort_field_for(column: BookColumn) -> Option<LibrarySortField> {
 }
 ```
 
-- [ ] **Step 4: 实现分块加载**
+- [ ] **Step 4: 实现分块加载与行单元格格式化**
 
 ```rust
+pub fn chunk_offsets(total: usize, chunk_size: usize) -> Vec<usize> {
+    if chunk_size == 0 || total == 0 {
+        return Vec::new();
+    }
+    let mut offsets = Vec::new();
+    let mut offset = 0usize;
+    while offset < total {
+        offsets.push(offset);
+        offset += chunk_size;
+    }
+    offsets
+}
+
+pub fn format_row_cell(column: BookColumn, summary: &LibraryBookSummary) -> String {
+    match column {
+        BookColumn::Title => summary.title.clone(),
+        BookColumn::Authors => summary.authors.join(", "),
+        BookColumn::Series => match &summary.series {
+            Some(series) => match series.index {
+                Some(index) => format!("{} [{}]", series.name, index),
+                None => series.name.clone(),
+            },
+            None => String::new(),
+        },
+        BookColumn::Tags => summary.tags.join(", "),
+        BookColumn::Publisher => summary.publisher.clone().unwrap_or_default(),
+        BookColumn::Rating => summary.rating.map(|rating| (rating / 2).to_string()).unwrap_or_default(),
+        BookColumn::DateAdded => summary.date_added.clone().unwrap_or_default(),
+        BookColumn::Format => summary
+            .formats
+            .iter()
+            .map(|format| format.name.clone())
+            .collect::<Vec<_>>()
+            .join(", "),
+        BookColumn::Size => String::new(),
+    }
+}
+
 pub fn load_all_summaries(
     service: &LibraryService,
     query: &LibraryQuery,
 ) -> anyhow::Result<Vec<LibraryBookSummary>> {
     let mut rows = Vec::new();
-    let mut offset = 0usize;
-    loop {
+    for offset in chunk_offsets(query_total_hint, SUMMARY_CHUNK_SIZE) {
         let page = service.query_summary_page(
             &query.clone().with_limit(SUMMARY_CHUNK_SIZE).with_offset(offset),
         )?;
         let fetched = page.books.len();
         rows.extend(page.books);
-        if fetched < SUMMARY_CHUNK_SIZE || rows.len() >= page.total {
+        if fetched < SUMMARY_CHUNK_SIZE {
             break;
         }
-        offset += fetched;
     }
     Ok(rows)
 }
 ```
-> `LibraryQuery::with_limit` / `with_offset` 已在 caliberate 中提供(`crates/library/src/query.rs:111`, `:167`)。`page.total` 字段名以实际为准。
+> `query_total_hint` 需要先知道总书数 —— 实现上先调一次 `query_summary_page(&query.with_limit(1))` 拿 `page.total`,再按 `chunk_offsets(total, SUMMARY_CHUNK_SIZE)` 循环。`LibraryBookSummary` 的 `series` 字段类型(`Option<LibrarySeriesSummary>`,含 `name` 与 `index: Option<f64>`)以 `crates/library/src/summary.rs:16` 为准。
+> `LibraryQuery::with_limit` / `with_offset` 已在 caliberate 中提供(`crates/library/src/query.rs:111`, `:167`)。
 
 - [ ] **Step 5: 实现 `BookList` 实体**
 

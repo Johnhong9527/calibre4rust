@@ -36,7 +36,14 @@
 - **不引入** Python 运行时、WebView、ORM、egui/eframe。
 - **不修改 `../caliberate` 仓库**。发现 service 缺口,记入 `docs/caliberate-gaps.md`,不在前端绕过。
 - **提交粒度**:每个 task 结束提交一次,commit message 用中文。
-- **网络**:crates.io 下载不稳定。`cargo fetch` 失败时重试;不要因为一次失败就改依赖方案。
+- **网络**:crates.io 索引直连极慢(实测 10 分钟卡在 "Updating crates.io index")。**必须**走镜像,否则每次构建都要等十几分钟:
+  ```bash
+  cargo build --target aarch64-apple-darwin \
+    --config 'source.crates-io.replace-with="rsproxy"' \
+    --config 'source.rsproxy.registry="sparse+https://rsproxy.cn/index/"'
+  ```
+  建议把镜像写进 `~/.cargo/config.toml`(全局),**不要**写进本仓库的 `.cargo/config.toml`(保持仓库可移植)。同理 `rustup` 走 `RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static`。
+  下文所有 `cargo build` / `cargo test` 命令默认已带该配置;若你把镜像写进了全局配置,可省略 `--config` 参数。
 
 ---
 
@@ -506,19 +513,24 @@ git commit -m "feat: workspace 骨架与 GPUI 启动
 
 > **所有权注意**:`LibraryCatalog<'a>` 借用 `&'a dyn LibraryBackend`,不能自引用。本实现照搬 caliberate egui 侧的做法(`crates/gui/src/views.rs:90`):每次调用现建 `LibraryCatalog::new(&self.database)`。**不要**用 `Box::leak` 或自引用结构绕过。
 
-- [ ] **Step 1: 验证 caliberate 在 macOS 上能编译**
+- [ ] **Step 1: 确认 caliberate 在 macOS 上能编译**
+
+**已知状态(2026-10-21 实测)**:在 `../caliberate` 下 `cargo check --workspace --all-targets` 于 macOS **零错误通过**(1m39s),全部 14 个 crate 均可编译。
+
+本步是**复核**而非探索 —— 目的是确认在本计划的依赖组合下仍然成立(尤其 `caliberate-library` 会拖入 `caliberate-metadata` → `unrar` / `reqwest`)。
 
 Run:
 ```bash
 cd ../caliberate
-cargo check -p caliberate-core -p caliberate-db -p calibre2rust-placeholder 2>/dev/null || \
-cargo check -p caliberate-core -p caliberate-db -p caliberate-library
+cargo check --workspace --all-targets \
+  --config 'source.crates-io.replace-with="rsproxy"' \
+  --config 'source.rsproxy.registry="sparse+https://rsproxy.cn/index/"'
 ```
-Expected: 编译通过。
+Expected: `Finished dev profile ...`,零 `error`。
 
-若失败:
+若将来 caliberate 升级后在本平台编译失败:
 - 记录具体 crate 与错误到 `docs/caliberate-gaps.md` 的"平台缺口"小节。
-- 只从本项目的依赖中移除**确实编译不过**的 crate(例如 `caliberate-metadata` 依赖 `unrar`)。
+- 只从本项目的依赖中移除**确实编译不过**的 crate。
 - 若 `caliberate-library` 本身编译不过,退化为只依赖 `caliberate-db`,并在 gaps 里记录"分类浏览器与 calibre 库挂载不可用"。
 
 - [ ] **Step 2: 写失败测试**

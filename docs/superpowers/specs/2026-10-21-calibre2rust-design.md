@@ -497,11 +497,20 @@ calibre 的阅读器用 Qt WebEngine(完整 CSS)。GPUI 无 WebView。
 - 持久化的 clamp 行为:窗口变小后,恢复的旧面板尺寸不得把书列表挤没 → 单测(caliberate 的 philosophy 明确要求:"Their saved geometry must be clamped against the current window")。
 - GPUI 的 `VisualTestAppContext` 在 macOS 上需主线程 → 标记 `#[ignore]`,手动跑;其余逻辑抽成纯函数。
 
-### 7.3 macOS 兼容性验证(caliberate 侧)
+### 7.3 macOS 兼容性验证(caliberate 侧)—— **已通过(2026-10-21)**
 
-**必须在 Phase A 完成前完成**:`cargo check --workspace` 在 macOS 上是否通过。caliberate 官方保证 Windows/Linux,macOS 未验证。
-- 若 caliberate 某些 crate 在 macOS 编译失败(尤其 `crates/device` 的挂载检测、`crates/metadata` 的 `unrar`),则**只消费通过编译的 crate**(core/db/library/assets),把有问题的 crate 排除在外。
-- 验证命令:`cargo check -p caliberate-core -p caliberate-db -p caliberate-library -p caliberate-assets`(在 `../caliberate` 下跑)。
+**验证结果**:`cd ../caliberate && cargo check --workspace --all-targets` 在 macOS(aarch64-apple-darwin,Rust 1.92)上**零错误通过**,耗时 1m39s。
+- 全部 14 个 crate(含 `device`、`metadata`、`unrar`、`eframe`/`egui`)在 macOS 上均可编译。
+- 警告仅来自既有的 `caliberate-gui`(57 条 dead_code)与 `caliberate-library`(1 条),与本项目无关,按 caliberate 的 AGENTS.md 规定**不转为本项目的修复范围**。
+- 结论:**本项目的 `calibre2rust-gui` 可以依赖 caliberate 的全部 crate,无需排除任何模块。**
+
+**网络提示**:crates.io 索引直连极慢(实测 10 分钟仍卡在 "Updating crates.io index")。用 rsproxy 镜像后同一命令 1m39s 完成:
+```bash
+cargo check --workspace --all-targets \
+  --config 'source.crates-io.replace-with="rsproxy"' \
+  --config 'source.rsproxy.registry="sparse+https://rsproxy.cn/index/"'
+```
+镜像配置**不写进**本仓库的 `.cargo/config.toml`(保持仓库可移植),由开发者放在 `~/.cargo/config.toml` 或按上面的 `--config` 传参。
 
 ### 7.4 构建与质量门禁
 

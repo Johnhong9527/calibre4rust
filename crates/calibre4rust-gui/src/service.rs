@@ -37,6 +37,12 @@ impl LibraryService {
         Ok(Self { database })
     }
 
+    /// 打开一个临时的内存书库。用于书库不可用时的占位,数据不落盘。
+    pub fn open_in_memory() -> anyhow::Result<Self> {
+        let database = Database::open_path(":memory:", 1_000).context("打开内存书库失败")?;
+        Ok(Self { database })
+    }
+
     /// `LibraryCatalog` 借用 backend,不能自引用 —— 每次调用现建一个。
     fn catalog(&self) -> LibraryCatalog<'_> {
         LibraryCatalog::new(&self.database)

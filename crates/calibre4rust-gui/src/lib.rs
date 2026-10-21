@@ -1,7 +1,9 @@
+pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod service;
 pub mod theme_provider;
+pub mod window;
 
 #[cfg(test)]
 mod architecture_tests {

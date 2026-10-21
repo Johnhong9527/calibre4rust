@@ -1,0 +1,36 @@
+[package]
+name = "calibre4rust-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "calibre4rust_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "calibre4rust"
+path = "src/main.rs"
+
+[dependencies]
+caliberate-core    = { workspace = true }
+caliberate-db      = { workspace = true }
+caliberate-library = { workspace = true }
+gpui               = { workspace = true }
+gpui_platform      = { workspace = true }
+gpui_macros        = { workspace = true }
+gpui_util          = { workspace = true }
+ui                 = { workspace = true }
+theme              = { workspace = true }
+icons              = { workspace = true }
+menu               = { workspace = true }
+fuzzy              = { workspace = true }
+component          = { workspace = true }
+anyhow             = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid               = { workspace = true }
+image              = { workspace = true }

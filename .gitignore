@@ -1,0 +1,9 @@
+# Rust 构建产物
+/target
+**/target
+
+# superpowers 工作区(ledger / brief / review 包)
+.superpowers/
+
+# macOS
+.DS_Store

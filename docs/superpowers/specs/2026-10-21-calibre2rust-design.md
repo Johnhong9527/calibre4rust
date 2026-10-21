@@ -550,7 +550,12 @@ cargo fmt --check
    建议:开发期用 `path` 依赖联调,提交前换回固定 rev;caliberate 有实质进展后再 bump。
 2. **是否最终并回 caliberate 仓库**(作为 `crates/gui-gpui`)
    本项目先独立;等 GPUI 前端稳定后再议。需要架构师决定。
-3. **是否要求 GUI 与 caliberate 的 egui 前端功能对等**
+3. **项目命名不一致(需统一)**
+   目录名是 `calibre2Rust/`(会话开始前由用户创建),而用户在会话中建的 `README.md` 标题写的是 `# calibre4rust`。本设计文档与实施计划目前统一采用 **`calibre2rust`**(二进制名 `calibre2rust`,crate 名 `calibre2rust_gui`)。
+   请确认最终用哪个;若定 `calibre4rust`,需要同步改:目录名、二进制名、crate 名、`calibre2Rust` 目录下的文档路径。
+   **注意**:目录已被 git 初始化并有 3 次提交,改目录名要一并处理 git remote 与文档内路径引用。
+
+4. **是否要求 GUI 与 caliberate 的 egui 前端功能对等**
    egui 侧 16,876 行已覆盖大量细节(快捷键、偏好项、拖拽、图标主题)。完全对等是巨量工作;建议按 §6 的阶段推进,每个阶段以"calibre 的对应功能可用"为验收,而不是"egui 侧有多少行就做多少行"。
 
 ### 9.2 caliberate 的 service 缺口(记入 caliberate issue 清单,不在本前端绕过)

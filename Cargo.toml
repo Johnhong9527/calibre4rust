@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = ["crates/calibre4rust-gui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+gpui           = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3", default-features = false }
+gpui_platform  = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3", default-features = false, features = ["font-kit", "wayland", "x11", "runtime_shaders"] }
+gpui_macros    = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+gpui_util      = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+ui             = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+theme          = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+icons          = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+menu           = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+fuzzy          = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+component      = { git = "https://github.com/zed-industries/zed", rev = "92447a17cc008225c73619f1c3f0cdefc8ababf3" }
+
+# caliberate 的三个 crate 都在同一个 git 仓库里。cargo 对 git 依赖不允许同时写
+# `git` 与 `path`("ambiguous"),不写 path 时 cargo 会在 checkout 的 workspace
+# members 中按包名查找。
+caliberate-core       = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
+caliberate-db         = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
+caliberate-library    = { git = "https://github.com/sguzman/caliberate", rev = "f9c41d733e5bb26c913fb571cbd0e1f3b4b403eb" }
+
+anyhow    = "1"
+rusqlite  = { version = "0.39", features = ["bundled"] }
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing   = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid      = { version = "1", features = ["v4"] }
+image     = { version = "0.25", default-features = false }
+
+[patch.crates-io]
+async-task = { git = "https://github.com/zed-industries/async-task.git", rev = "015845a19fc31752c02367567d3b8900a406f9da" }

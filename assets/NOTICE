@@ -1,0 +1,8 @@
+本目录的 SVG 图标取自 calibre 项目(https://github.com/kovidgoyal/calibre),
+位于其 imgsrc/ 目录,版权归 Kovid Goyal 及 calibre 贡献者所有,
+以 GPL-3.0-or-later 许可分发。
+
+本项目整体亦以 GPL-3.0-or-later 分发。
+
+文件名保持 calibre 原样,以便与上游界面逐一对应。
+深色主题变体规则:图标名 N 先找 N-for-{主题}-theme.svg,找不到则用 N.svg。
